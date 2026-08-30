@@ -14,6 +14,7 @@ const userSchema = new mongoose.Schema(
         "new_user",
         "onboarding_d1_step2",
         "onboarding_d1_step3",
+        "onboarding_d1_step4",
         "trigger_day_3_profiling",
         "active_tracking",
       ],

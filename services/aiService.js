@@ -1,12 +1,12 @@
-const { GoogleGenAI } = require("@google/genai");
+const OpenAI = require("openai");
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_KEY;
-let aiClient = null;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+let openaiClient = null;
 
-if (GEMINI_API_KEY) {
-  aiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+if (OPENAI_API_KEY) {
+  openaiClient = new OpenAI({ apiKey: OPENAI_API_KEY });
 } else {
-  console.warn("⚠️ GEMINI_API_KEY is not set in environment variables.");
+  console.warn("⚠️ OPENAI_API_KEY is not set in environment variables.");
 }
 
 const FIXED_CATEGORIES = [
@@ -25,7 +25,7 @@ const SYSTEM_PROMPT = `You are the AI brain behind "The whatsapp bot", a highly 
 Your goal is to help users track expenses effortlessly while respecting their unique relationship with money. You are never judgmental, always supportive, and strictly maintain user privacy.
 
 # MOBILE-FIRST FORMATTING GUIDELINES:
-- Always format WhatsApp messages cleanly with double line breaks (\`\n\n\`), bold keywords (\`*text*\`), and minimal, tasteful emojis.
+- Always format WhatsApp messages cleanly with double line breaks (\`\\n\\n\`), bold keywords (\`*text*\`), and minimal, tasteful emojis.
 - Never produce big dense blocks of text. Keep each paragraph 1-2 lines maximum.
 - Use fixed emojis for categories:
   🍔 Food & Dining | 🛒 Groceries | 🚗 Travel & Commute | 🛍️ Shopping & Lifestyle | 💡 Bills & Utilities | 🍿 Entertainment | 🏥 Health & Medical | 📦 General
@@ -44,14 +44,14 @@ Your goal is to help users track expenses effortlessly while respecting their un
 - State: 'new_user'
   Action: Send the clean, friction-free Welcome + Why WhatsApp + Privacy pledge + Let's go prompt.
   Reply text:
-  "Hey there! 👋 Welcome to your new personal finance buddy on WhatsApp.\n\nHere's how we roll:\n✨ *Zero new apps* — track money as easily as texting a friend.\n🔒 *100% Private* — your data stays strictly between you & your private database.\n\nReady to take control? Tap below to get started! 👇"
+  "Hey there! 👋 Welcome to your new personal finance buddy on WhatsApp.\\n\\nHere's how we roll:\\n✨ *Zero new apps* — track money as easily as texting a friend.\\n🔒 *100% Private* — your data stays strictly between you & your private database.\\n\\nReady to take control? Tap below to get started! 👇"
   Interactive Buttons: [{"id": "btn_lets_go", "title": "Let's go 🚀"}]
   Next State -> 'onboarding_d1_step2'
 
 - State: 'onboarding_d1_step2'
   Action: User tapped "Let's go" or replied. Offer 3 simple goal choices with reply buttons:
   Reply text:
-  "Love the energy! 🎉\n\nWhat's your main focus right now? Tap an option or type below:\n\n1️⃣ *Track daily spends* 📝\n2️⃣ *Cut impulse buys* (food delivery / shopping) 🛍️\n3️⃣ *Build savings* / Emergency fund 💰"
+  "Love the energy! 🎉\\n\\nWhat's your main focus right now? Tap an option or type below:\\n\\n1️⃣ *Track daily spends* 📝\\n2️⃣ *Cut impulse buys* (food delivery / shopping) 🛍️\\n3️⃣ *Build savings* / Emergency fund 💰"
   Interactive Buttons: [
     {"id": "goal_track_spends", "title": "1️⃣ Daily Spends 📝"},
     {"id": "goal_cut_impulses", "title": "2️⃣ Cut Impulses 🛍️"},
@@ -62,7 +62,7 @@ Your goal is to help users track expenses effortlessly while respecting their un
 - State: 'onboarding_d1_step3'
   Action: Acknowledge goal. Offer quick budget buttons or accept custom typed amount:
   Reply text:
-  "Solid choice! 🙌\n\nWhat's your approximate monthly budget target?\nTap a quick option below or type your custom amount (e.g. *45,000* or *35k*):"
+  "Solid choice! 🙌\\n\\nWhat's your approximate monthly budget target?\\nTap a quick option below or type your custom amount (e.g. *45,000* or *35k*):"
   Interactive Buttons: [
     {"id": "budget_15k", "title": "₹15,000"},
     {"id": "budget_25k", "title": "₹25,000"},
@@ -73,7 +73,7 @@ Your goal is to help users track expenses effortlessly while respecting their un
 - State: 'onboarding_d1_step4'
   Action: Playful check-in frequency with time references and interactive choices:
   Reply text:
-  "Almost there! 🎯\n\nWhen would you like a friendly check-in so nothing slips through the cracks?\n\n⏰ *Every 3 hours* (Recommended) — We don't want you to forget anything or struggle remembering spends later!\n🌅 *Afternoon, Evening, Night* (2 PM, 7 PM, 10 PM)\n🌙 *Night only* (~9:30 PM) — Log everything at the end of the day.\n🔕 *Never* — I'll do it on my own."
+  "Almost there! 🎯\\n\\nWhen would you like a friendly check-in so nothing slips through the cracks?\\n\\n⏰ *Every 3 hours* (Recommended) — We don't want you to forget anything or struggle remembering spends later!\\n🌅 *Afternoon, Evening, Night* (2 PM, 7 PM, 10 PM)\\n🌙 *Night only* (~9:30 PM) — Log everything at the end of the day.\\n🔕 *Never* — I'll do it on my own."
   Interactive Buttons: [
     {"id": "nudge_3hrs", "title": "⏰ Every 3 hrs"},
     {"id": "nudge_3x_daily", "title": "🌅 3x Daily"},
@@ -84,7 +84,7 @@ Your goal is to help users track expenses effortlessly while respecting their un
 - State: 'active_tracking'
   Action:
   1. If completing onboarding (from Step 4), provide the complete welcome summary:
-     "🎉 *All set & ready to roll!*\n\n📋 *Your Setup Summary:*\n🎯 *Goal:* <User Goal>\n💰 *Monthly Budget:* 🟢 ₹<Budget>\n⏰ *Reminders:* <Frequency>\n\n🧠 *Natural Chatting:*\nFeel free to talk in free flow (English / Hinglish)! I'm powered by AI:\n• *150 ki chai & snacks*\n• *Uber 320 to office*\n• *Blinkit grocery 650*\n\n🏷️ *Categories:* 🍔 Food | 🛒 Groceries | 🚗 Travel | 🛍️ Shopping | 💡 Bills | 🍿 Entertainment | 🏥 Health | 📦 General\n\n⚡ *Hot Keywords:*\n• *help* ➔ Shortcuts & commands\n• *stats* / *summary* ➔ View monthly spend & 🟢🟡🔴 budget\n• *edit* ➔ Change budget or reminders\n• *history* ➔ See recent transactions"
+     "🎉 *All set & ready to roll!*\\n\\n📋 *Your Setup Summary:*\\n🎯 *Goal:* <User Goal>\\n💰 *Monthly Budget:* 🟢 ₹<Budget>\\n⏰ *Reminders:* <Frequency>\\n\\n🧠 *Natural Chatting:*\\nFeel free to talk in free flow (English / Hinglish)! I'm powered by AI:\\n• *150 ki chai & snacks*\\n• *Uber 320 to office*\\n• *Blinkit grocery 650*\\n\\n🏷️ *Categories:* 🍔 Food | 🛒 Groceries | 🚗 Travel | 🛍️ Shopping | 💡 Bills | 🍿 Entertainment | 🏥 Health | 📦 General\\n\\n⚡ *Hot Keywords:*\\n• *help* ➔ Shortcuts & commands\\n• *stats* / *summary* ➔ View monthly spend & 🟢🟡🔴 budget\\n• *edit* ➔ Change budget or reminders\\n• *history* ➔ See recent transactions"
   2. If logging an expense, parse it cleanly, format confirmation with category emoji and amount.
   3. If user says 'help', 'stats', 'summary', 'edit', or 'history', assist appropriately.
 
@@ -113,7 +113,7 @@ You MUST ALWAYS respond in the following strict JSON format:
 }`;
 
 /**
- * Process a user's message through the AI Brain.
+ * Process a user's message through the OpenAI AI Brain.
  */
 async function processFinanceMessage({
   userMessage,
@@ -123,13 +123,11 @@ async function processFinanceMessage({
   currentDate = new Date().toISOString().split("T")[0],
   budgetStats = null,
 }) {
-  if (!aiClient) {
-    if (process.env.GEMINI_API_KEY || process.env.GEMINI_KEY) {
-      aiClient = new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY || process.env.GEMINI_KEY,
-      });
+  if (!openaiClient) {
+    if (process.env.OPENAI_API_KEY) {
+      openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     } else {
-      throw new Error("GEMINI_API_KEY is not configured.");
+      throw new Error("OPENAI_API_KEY is not configured in environment variables.");
     }
   }
 
@@ -146,41 +144,31 @@ Latest User Message / Button Click:
 "${userMessage}"
 `;
 
-  const modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-  
+  const modelName = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
   let response;
   let attempts = 0;
-  while (attempts < 4) {
+  while (attempts < 3) {
     try {
       attempts++;
-      response = await aiClient.models.generateContent({
+      response = await openaiClient.chat.completions.create({
         model: modelName,
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: contextPrompt }],
-          },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: contextPrompt },
         ],
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          responseMimeType: "application/json",
-        },
+        response_format: { type: "json_object" },
+        temperature: 0.3,
       });
       break; // Success
     } catch (apiErr) {
       const isRateLimit =
+        apiErr.status === 429 ||
         apiErr.message?.includes("429") ||
-        apiErr.message?.includes("RESOURCE_EXHAUSTED") ||
-        apiErr.status === "RESOURCE_EXHAUSTED";
-      if (isRateLimit && attempts < 4) {
-        // Check for suggested retry delay or default to 8 seconds
-        let delayMs = 8000;
-        const match = apiErr.message?.match(/retry in ([0-9.]+)s/i);
-        if (match && match[1]) {
-          delayMs = Math.ceil(parseFloat(match[1]) * 1000) + 1000;
-        }
-        console.warn(`⏳ Rate limit encountered. Waiting ${Math.round(delayMs / 1000)}s before retry (attempt ${attempts}/4)...`);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        apiErr.message?.includes("rate_limit");
+      if (isRateLimit && attempts < 3) {
+        console.warn(`⏳ OpenAI Rate limit encountered. Retrying in 4s (attempt ${attempts}/3)...`);
+        await new Promise((resolve) => setTimeout(resolve, 4000));
       } else {
         throw apiErr;
       }
@@ -189,10 +177,10 @@ Latest User Message / Button Click:
 
   let parsed;
   try {
-    const rawText = response.text.trim();
+    const rawText = response.choices[0].message.content.trim();
     parsed = JSON.parse(rawText);
   } catch (err) {
-    console.error("Failed to parse Gemini JSON response:", response.text, err);
+    console.error("Failed to parse OpenAI JSON response:", response, err);
     throw new Error("Invalid JSON response from AI Brain.");
   }
 
@@ -200,15 +188,20 @@ Latest User Message / Button Click:
     reply_to_user: parsed.reply_to_user || "I'm here to help you track your expenses!",
     user_state: parsed.user_state || userState,
     needs_clarification: Boolean(parsed.needs_clarification),
-    interactive_buttons: Array.isArray(parsed.interactive_buttons) && parsed.interactive_buttons.length > 0
-      ? parsed.interactive_buttons.slice(0, 3) // WhatsApp max 3 reply buttons
-      : null,
+    interactive_buttons:
+      Array.isArray(parsed.interactive_buttons) && parsed.interactive_buttons.length > 0
+        ? parsed.interactive_buttons.slice(0, 3) // WhatsApp max 3 reply buttons
+        : null,
     extracted_expense: {
       amount: parsed.extracted_expense?.amount ?? null,
-      currency: parsed.extracted_expense?.currency || (parsed.extracted_expense?.amount ? "INR" : null),
+      currency:
+        parsed.extracted_expense?.currency ||
+        (parsed.extracted_expense?.amount ? "INR" : null),
       category: parsed.extracted_expense?.category ?? null,
       description: parsed.extracted_expense?.description ?? null,
-      date: parsed.extracted_expense?.date || (parsed.extracted_expense?.amount ? currentDate : null),
+      date:
+        parsed.extracted_expense?.date ||
+        (parsed.extracted_expense?.amount ? currentDate : null),
     },
     extracted_preferences: {
       primary_goal: parsed.extracted_preferences?.primary_goal ?? null,

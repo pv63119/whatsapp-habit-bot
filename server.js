@@ -6,7 +6,7 @@ const cron = require("node-cron");
 
 const User = require("./models/User");
 const Expense = require("./models/Expense");
-const { processFinanceMessage } = require("./services/aiService");
+const { processFinanceMessage, FIXED_CATEGORIES } = require("./services/aiService");
 
 // Environment Variables
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -28,7 +28,19 @@ if (!MONGODB_URI) {
 const app = express();
 app.use(express.json());
 
-// Send WhatsApp text message via Meta Cloud API
+// Category to Emoji map
+const CATEGORY_EMOJI_MAP = {
+  "Food & Dining": "🍔",
+  "Groceries": "🛒",
+  "Travel & Commute": "🚗",
+  "Shopping & Lifestyle": "🛍️",
+  "Bills & Utilities": "💡",
+  "Entertainment": "🍿",
+  "Health & Medical": "🏥",
+  "General": "📦",
+};
+
+// 1. Send standard WhatsApp text message
 async function sendWhatsAppMessage(to_phone_number, message_text) {
   if (!PHONE_NUMBER_ID || !WHATSAPP_TOKEN) {
     console.error("❌ WhatsApp configuration missing (PHONE_NUMBER_ID or WHATSAPP_TOKEN).");
@@ -36,7 +48,6 @@ async function sendWhatsAppMessage(to_phone_number, message_text) {
   }
 
   const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
-
   const payload = {
     messaging_product: "whatsapp",
     to: to_phone_number,
@@ -51,13 +62,97 @@ async function sendWhatsAppMessage(to_phone_number, message_text) {
         "Content-Type": "application/json",
       },
     });
-    console.log(`✅ Message successfully sent to ${to_phone_number}!`);
+    console.log(`✅ Text message sent to ${to_phone_number}`);
   } catch (error) {
     console.error(
-      "❌ Error sending message:",
+      "❌ Error sending text message:",
       error.response ? JSON.stringify(error.response.data) : error.message
     );
   }
+}
+
+// 2. Send interactive quick reply buttons (up to 3 buttons)
+async function sendWhatsAppInteractiveButtons(to_phone_number, bodyText, buttons) {
+  if (!PHONE_NUMBER_ID || !WHATSAPP_TOKEN) {
+    console.error("❌ WhatsApp configuration missing.");
+    return sendWhatsAppMessage(to_phone_number, bodyText);
+  }
+
+  const formattedButtons = buttons.slice(0, 3).map((btn, index) => ({
+    type: "reply",
+    reply: {
+      id: btn.id || `btn_${index}`,
+      title: (btn.title || `Option ${index + 1}`).substring(0, 20), // WhatsApp title limit 20 chars
+    },
+  }));
+
+  const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
+  const payload = {
+    messaging_product: "whatsapp",
+    to: to_phone_number,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: bodyText },
+      action: { buttons: formattedButtons },
+    },
+  };
+
+  try {
+    await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    });
+    console.log(`✅ Interactive buttons sent to ${to_phone_number}`);
+  } catch (error) {
+    console.error(
+      "❌ Error sending interactive buttons, falling back to text:",
+      error.response ? JSON.stringify(error.response.data) : error.message
+    );
+    await sendWhatsAppMessage(to_phone_number, bodyText);
+  }
+}
+
+// Helper: Calculate monthly budget stats with Traffic-Light indicators
+async function getMonthlyBudgetStats(phoneNumber, monthlyBudget) {
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const expenses = await Expense.find({
+    phoneNumber,
+    createdAt: { $gte: startOfMonth },
+  });
+
+  const totalSpent = expenses.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  const budget = monthlyBudget || 0;
+  const remaining = budget > 0 ? budget - totalSpent : 0;
+  const remainingPercent = budget > 0 ? (remaining / budget) * 100 : 100;
+
+  let statusEmoji = "🟢";
+  let statusText = "Healthy";
+  if (budget > 0) {
+    if (remainingPercent <= 30) {
+      statusEmoji = "🔴";
+      statusText = "Low Budget Alert";
+    } else if (remainingPercent <= 70) {
+      statusEmoji = "🟡";
+      statusText = "Moderate Spending";
+    }
+  }
+
+  return {
+    totalSpent,
+    monthlyBudget: budget,
+    remaining,
+    remainingPercent: Math.max(0, Math.round(remainingPercent)),
+    statusEmoji,
+    statusText,
+    count: expenses.length,
+    expenses,
+  };
 }
 
 // 1. GET route: Meta webhook verification handshake
@@ -84,11 +179,23 @@ app.post("/webhook", async (req, res) => {
 
       if (messageData) {
         const senderPhone = messageData.from;
+        let incomingText = "";
 
-        // Handle text messages
+        // Handle text message
         if (messageData.type === "text") {
-          const userText = messageData.text?.body?.trim() || "";
-          console.log(`📩 Incoming message from ${senderPhone}: "${userText}"`);
+          incomingText = messageData.text?.body?.trim() || "";
+        }
+        // Handle interactive button click or list selection
+        else if (messageData.type === "interactive") {
+          incomingText =
+            messageData.interactive?.button_reply?.title ||
+            messageData.interactive?.list_reply?.title ||
+            messageData.interactive?.button_reply?.id ||
+            "";
+        }
+
+        if (incomingText) {
+          console.log(`📩 Incoming from ${senderPhone}: "${incomingText}"`);
 
           // 1. Retrieve or create user record
           let user = await User.findOne({ phoneNumber: senderPhone });
@@ -102,15 +209,75 @@ app.post("/webhook", async (req, res) => {
             await user.save();
           }
 
+          const lowerText = incomingText.toLowerCase().trim();
+
+          // Quick Action Handler: 'stats' or 'summary'
+          if (user.userState === "active_tracking" && (lowerText === "stats" || lowerText === "summary")) {
+            const stats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
+
+            // Group by category
+            const categoryTotals = {};
+            for (let exp of stats.expenses) {
+              categoryTotals[exp.category] = (categoryTotals[exp.category] || 0) + exp.amount;
+            }
+
+            let categoryBreakdown = Object.entries(categoryTotals)
+              .map(([cat, amt]) => `${CATEGORY_EMOJI_MAP[cat] || "📦"} *${cat}:* ₹${amt.toLocaleString("en-IN")}`)
+              .join("\n");
+
+            if (!categoryBreakdown) categoryBreakdown = "No expenses logged this month yet!";
+
+            const statsMessage =
+              `📊 *Monthly Spend Summary*\n\n` +
+              `💰 *Total Spent:* ₹${stats.totalSpent.toLocaleString("en-IN")}\n` +
+              (stats.monthlyBudget > 0
+                ? `🎯 *Budget:* ₹${stats.monthlyBudget.toLocaleString("en-IN")}\n` +
+                  `${stats.statusEmoji} *Remaining:* ₹${stats.remaining.toLocaleString("en-IN")} (${stats.remainingPercent}%)\n` +
+                  `*Status:* ${stats.statusText}\n\n`
+                : "\n") +
+              `🏷️ *Category Breakdown:*\n${categoryBreakdown}\n\n` +
+              `💡 _Tip: Just text me any spend to add to your stats!_`;
+
+            await sendWhatsAppMessage(senderPhone, statsMessage);
+            return res.sendStatus(200);
+          }
+
+          // Quick Action Handler: 'history'
+          if (user.userState === "active_tracking" && lowerText === "history") {
+            const recentExpenses = await Expense.find({ phoneNumber: senderPhone })
+              .sort({ createdAt: -1 })
+              .limit(5);
+
+            if (recentExpenses.length === 0) {
+              await sendWhatsAppMessage(senderPhone, "📝 No expenses logged yet! Text me something like '150 coffee' to start.");
+            } else {
+              const historyList = recentExpenses
+                .map((e) => `${CATEGORY_EMOJI_MAP[e.category] || "📦"} *₹${e.amount}* - ${e.description} _(${e.date})_`)
+                .join("\n");
+
+              await sendWhatsAppMessage(senderPhone, `📜 *Last 5 Transactions:*\n\n${historyList}`);
+            }
+            return res.sendStatus(200);
+          }
+
+          // Fetch current monthly stats to give AI context
+          const currentStats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
+
           // 2. Send to AI Brain
           const aiResult = await processFinanceMessage({
-            userMessage: userText,
+            userMessage: incomingText,
             userState: user.userState,
             preferences: user.preferences,
             recentHistory: user.conversationHistory.slice(-6),
+            budgetStats: {
+              spentThisMonth: currentStats.totalSpent,
+              monthlyBudget: currentStats.monthlyBudget,
+              remainingBudget: currentStats.remaining,
+              statusIndicator: currentStats.statusEmoji,
+            },
           });
 
-          console.log(`🤖 AI Result for ${senderPhone}:`, JSON.stringify(aiResult, null, 2));
+          console.log(`🤖 AI Response:`, JSON.stringify(aiResult, null, 2));
 
           // 3. Update User State and Preferences in MongoDB
           if (aiResult.user_state) {
@@ -131,8 +298,8 @@ app.post("/webhook", async (req, res) => {
             }
           }
 
-          // Save conversation history (rolling window of last 20 messages)
-          user.conversationHistory.push({ role: "user", content: userText });
+          // Maintain conversation history
+          user.conversationHistory.push({ role: "user", content: incomingText });
           user.conversationHistory.push({ role: "model", content: aiResult.reply_to_user });
           if (user.conversationHistory.length > 20) {
             user.conversationHistory = user.conversationHistory.slice(-20);
@@ -146,21 +313,30 @@ app.post("/webhook", async (req, res) => {
             aiResult.extracted_expense &&
             aiResult.extracted_expense.amount != null
           ) {
+            const category = aiResult.extracted_expense.category || "General";
             const expense = new Expense({
               phoneNumber: senderPhone,
               amount: aiResult.extracted_expense.amount,
               currency: aiResult.extracted_expense.currency || "INR",
-              category: aiResult.extracted_expense.category || "General",
-              description: aiResult.extracted_expense.description || userText,
+              category: category,
+              description: aiResult.extracted_expense.description || incomingText,
               date: aiResult.extracted_expense.date || new Date().toISOString().split("T")[0],
-              rawMessage: userText,
+              rawMessage: incomingText,
             });
             await expense.save();
-            console.log(`💰 Expense saved for ${senderPhone}: ₹${expense.amount} (${expense.category})`);
+            console.log(`💰 Expense recorded for ${senderPhone}: ₹${expense.amount} (${category})`);
           }
 
-          // 5. Send reply back to user via WhatsApp
-          await sendWhatsAppMessage(senderPhone, aiResult.reply_to_user);
+          // 5. Send reply back to user (Interactive Buttons or Text)
+          if (aiResult.interactive_buttons && aiResult.interactive_buttons.length > 0) {
+            await sendWhatsAppInteractiveButtons(
+              senderPhone,
+              aiResult.reply_to_user,
+              aiResult.interactive_buttons
+            );
+          } else {
+            await sendWhatsAppMessage(senderPhone, aiResult.reply_to_user);
+          }
         }
       }
       res.sendStatus(200);
@@ -174,12 +350,68 @@ app.post("/webhook", async (req, res) => {
 });
 
 // ==========================================
-// PROACTIVE SCHEDULERS (Nudges & Day 3 Profiling)
+// PROACTIVE SCHEDULERS
 // ==========================================
 
-// Check for Day 3 profiling trigger once a day at 11:00 AM
+// 1. Check every 3 hours (9 AM, 12 PM, 3 PM, 6 PM, 9 PM) for 3-hour nudge users
+cron.schedule("0 9,12,15,18,21 * * *", async () => {
+  try {
+    const users = await User.find({
+      userState: "active_tracking",
+      "preferences.nudgeFrequency": { $regex: /3|hour/i },
+    });
+
+    for (let user of users) {
+      await sendWhatsAppMessage(
+        user.phoneNumber,
+        "⏰ Quick check-in! Did you make any spends in the last few hours? Just text me to log it! ✨"
+      );
+    }
+  } catch (err) {
+    console.error("Error in 3-Hour Nudge cron:", err);
+  }
+});
+
+// 2. Afternoon & Night check-ins (2 PM, 7 PM, 10 PM)
+cron.schedule("0 14,19,22 * * *", async () => {
+  try {
+    const users = await User.find({
+      userState: "active_tracking",
+      "preferences.nudgeFrequency": { $regex: /afternoon|3x|day/i },
+    });
+
+    for (let user of users) {
+      await sendWhatsAppMessage(
+        user.phoneNumber,
+        "👋 Time for a quick expense check-in! Any recent spends or bills to note down?"
+      );
+    }
+  } catch (err) {
+    console.error("Error in 3x daily Nudge cron:", err);
+  }
+});
+
+// 3. Night-only check-in at 9:30 PM
+cron.schedule("30 21 * * *", async () => {
+  try {
+    const users = await User.find({
+      userState: "active_tracking",
+      "preferences.nudgeFrequency": { $regex: /night/i },
+    });
+
+    for (let user of users) {
+      await sendWhatsAppMessage(
+        user.phoneNumber,
+        "🌙 End-of-day check-in! Did you spend or save anything today? Send it over so we keep your budget accurate! 💰"
+      );
+    }
+  } catch (err) {
+    console.error("Error in Night Nudge cron:", err);
+  }
+});
+
+// 4. Day 3 Profiling check (11:00 AM)
 cron.schedule("0 11 * * *", async () => {
-  console.log("⏰ Running Day 3 Profiling check...");
   try {
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
@@ -187,7 +419,6 @@ cron.schedule("0 11 * * *", async () => {
     const fourDaysAgo = new Date();
     fourDaysAgo.setDate(fourDaysAgo.getDate() - 4);
 
-    // Find users registered ~3 days ago who are in active_tracking and have no recurring bills logged
     const eligibleUsers = await User.find({
       userState: "active_tracking",
       createdAt: { $gte: fourDaysAgo, $lte: threeDaysAgo },
@@ -195,36 +426,15 @@ cron.schedule("0 11 * * *", async () => {
     });
 
     for (let user of eligibleUsers) {
-      console.log(`Triggering Day 3 profiling for ${user.phoneNumber}`);
       user.userState = "trigger_day_3_profiling";
       await user.save();
 
       const day3Message =
-        "By the way, do you have a rent payment or EMI you'd like me to remind you about on a specific date?";
+        "By the way! 👋 Do you have a recurring rent payment or EMI you'd like me to remind you about on a specific date?";
       await sendWhatsAppMessage(user.phoneNumber, day3Message);
     }
   } catch (err) {
     console.error("Error in Day 3 Profiling cron:", err);
-  }
-});
-
-// Evening check-in at 8:00 PM for users who chose Evening or Morning/Evening reminders
-cron.schedule("0 20 * * *", async () => {
-  console.log("⏰ Running Evening Nudge check...");
-  try {
-    const eveningUsers = await User.find({
-      userState: "active_tracking",
-      "preferences.nudgeFrequency": { $regex: /evening|night/i },
-    });
-
-    for (let user of eveningUsers) {
-      await sendWhatsAppMessage(
-        user.phoneNumber,
-        "Hey! 👋 Quick check-in: did you have any expenses or savings to log today?"
-      );
-    }
-  } catch (err) {
-    console.error("Error in Evening Nudge cron:", err);
   }
 });
 

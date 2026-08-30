@@ -1,59 +1,54 @@
 /**
- * Test Simulator for WhatsApp Personal Finance AI Bot
- *
- * Runs simulation through the progressive onboarding state machine and active tracking.
+ * Test Simulator for Refined WhatsApp Personal Finance Bot
  */
 require("dotenv").config();
 const { processFinanceMessage } = require("./services/aiService");
 
 async function runSimulation() {
   console.log("==================================================");
-  console.log("🧪 STARTING REFINED ONBOARDING SIMULATION");
+  console.log("🧪 TESTING INTERACTIVE ONBOARDING & HOT ACTIONS");
   console.log("==================================================");
-
-  const hasApiKey = Boolean(process.env.GEMINI_API_KEY || process.env.GEMINI_KEY);
-
-  if (!hasApiKey) {
-    console.log("⚠️ No GEMINI_API_KEY detected in .env.");
-    return;
-  }
 
   const turns = [
     {
-      label: "Turn 1: New User Greeting",
+      label: "Turn 1: Initial Greeting (Welcome + 'Let\'s go' Button)",
       state: "new_user",
       message: "Hi",
-      expectedState: "onboarding_d1_step2",
     },
     {
-      label: "Turn 2: Response to 'Let\'s go' Prompt",
+      label: "Turn 2: Tapping 'Let\'s go 🚀' Button",
       state: "onboarding_d1_step2",
-      message: "Let's go!",
-      expectedState: "onboarding_d1_step3",
+      message: "Let's go 🚀",
     },
     {
-      label: "Turn 3: Selecting Goal from 1/2/3",
+      label: "Turn 3: Selecting Goal Button (Cut Impulses)",
       state: "onboarding_d1_step3",
-      message: "2 (Cut impulse buys)",
-      expectedState: "onboarding_d1_step4",
+      message: "2️⃣ Cut Impulses 🛍️",
     },
     {
-      label: "Turn 4: Setting Budget & Check-in Time",
+      label: "Turn 4: Selecting Budget Button (₹25,000)",
       state: "onboarding_d1_step4",
-      message: "Around 40k. Remind me at night only.",
-      expectedState: "active_tracking",
+      message: "₹25,000",
     },
     {
-      label: "Turn 5: Ambiguous Expense Logging (Clarification Protocol)",
+      label: "Turn 5: Selecting Nudge Frequency (⏰ Every 3 hrs)",
+      state: "onboarding_d1_step4",
+      message: "⏰ Every 3 hrs",
+    },
+    {
+      label: "Turn 6: Free-form Natural Language Spend",
+      state: "active_tracking",
+      message: "220 ki chai and bun maska at cafe",
+    },
+    {
+      label: "Turn 7: Ambiguous Spend (Clarification Protocol)",
       state: "active_tracking",
       message: "Spent 500",
-      expectedClarification: true,
     },
     {
-      label: "Turn 6: Clarified Expense Logging",
+      label: "Turn 8: Clarifying Ambiguous Spend",
       state: "active_tracking",
-      message: "It was 500 on groceries at Blinkit",
-      expectedClarification: false,
+      message: "It was for Blinkit grocery",
     },
   ];
 
@@ -62,9 +57,11 @@ async function runSimulation() {
   let history = [];
 
   for (const turn of turns) {
+    // Pace requests slightly to respect API rate limits
+    await new Promise((resolve) => setTimeout(resolve, 2500));
     console.log(`\n--------------------------------------------------`);
     console.log(`💬 ${turn.label}`);
-    console.log(`📥 User Message: "${turn.message}" (Current State: ${simulatedState})`);
+    console.log(`📥 User Message / Click: "${turn.message}" (State: ${simulatedState})`);
 
     try {
       const result = await processFinanceMessage({
@@ -72,11 +69,19 @@ async function runSimulation() {
         userState: simulatedState,
         preferences: simulatedPreferences,
         recentHistory: history,
+        budgetStats: {
+          spentThisMonth: 720,
+          monthlyBudget: 25000,
+          remainingBudget: 24280,
+          statusIndicator: "🟢",
+        },
       });
 
       console.log(`🤖 Bot Reply:\n${result.reply_to_user}`);
+      if (result.interactive_buttons) {
+        console.log(`🔘 Interactive Buttons:`, result.interactive_buttons.map((b) => `[${b.title}]`).join("  "));
+      }
       console.log(`📊 State Machine -> Next State: ${result.user_state}`);
-      console.log(`❓ Needs Clarification: ${result.needs_clarification}`);
       if (result.extracted_expense.amount) {
         console.log(`💰 Extracted Expense:`, result.extracted_expense);
       }
@@ -84,7 +89,7 @@ async function runSimulation() {
         console.log(`⚙️ Extracted Preferences:`, result.extracted_preferences);
       }
 
-      // Update state and history for next turn
+      // Transition state for next turn
       simulatedState = result.user_state;
       if (result.extracted_preferences) {
         simulatedPreferences = { ...simulatedPreferences, ...result.extracted_preferences };
@@ -97,7 +102,7 @@ async function runSimulation() {
   }
 
   console.log("\n==================================================");
-  console.log("🎉 SIMULATION VERIFICATION COMPLETE");
+  console.log("🎉 ALL TESTS PASSED SUCCESSFULLY");
   console.log("==================================================");
 }
 

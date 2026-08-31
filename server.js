@@ -387,10 +387,10 @@ async function broadcastNudge(filterRegex, timeSlot, frequencyType) {
       "preferences.nudgeFrequency": { $regex: filterRegex },
     });
 
-    const messageText = getNudgeMessage(frequencyType, timeSlot);
     console.log(`⏰ Broadcasting [${timeSlot} / ${frequencyType}] nudge to ${users.length} user(s)...`);
 
     for (let user of users) {
+      const messageText = getNudgeMessage(frequencyType, timeSlot, new Date(), user.name);
       await sendWhatsAppMessage(user.phoneNumber, messageText);
     }
   } catch (err) {

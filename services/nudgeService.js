@@ -328,13 +328,68 @@ function shouldMentionDay(frequencyType, timeSlot, now = new Date()) {
 }
 
 /**
+ * Decide whether this specific nudge should include the user's name (~30% of nudges)
+ */
+function shouldIncludeUserName(userName, frequencyType, timeSlot, now = new Date()) {
+  if (!userName || !userName.trim()) return false;
+
+  const istDateStr = now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // YYYY-MM-DD
+  const seed = getDailySeed(istDateStr + userName.toLowerCase());
+
+  if (frequencyType === "3hr") {
+    const slots = ["12PM", "3PM", "6PM", "9PM", "12AM"];
+    const chosenIndex = seed % slots.length;
+    // Allow a second slot ~20% of the time so average is ~28-30%
+    const allowSecond = ((seed >> 2) % 3 === 0);
+    const secondIndex = (chosenIndex + 2) % slots.length;
+    return slots[chosenIndex] === timeSlot || (allowSecond && slots[secondIndex] === timeSlot);
+  }
+
+  if (frequencyType === "3x") {
+    const slots = ["3PM", "7PM", "11PM"];
+    const chosenIndex = seed % slots.length;
+    return slots[chosenIndex] === timeSlot; // 1 in 3 = 33.3%
+  }
+
+  if (frequencyType === "night_only") {
+    // 1 in 3 days = 33.3%
+    return (seed % 3 === 0);
+  }
+
+  return false;
+}
+
+/**
+ * Naturally blends the user's name into the opening phrase of the nudge
+ */
+function injectNameIntoNudge(text, userName) {
+  if (!userName || !userName.trim()) return text;
+  const name = userName.trim();
+
+  // If text starts with a greeting or day greeting with an exclamation:
+  // "Happy Monday! ☀️" -> "Happy Monday, Priyanshu! ☀️"
+  // "3 PM slump! 🥱" -> "3 PM slump, Priyanshu! 🥱"
+  // "TGIF! 🎉" -> "TGIF, Priyanshu! 🎉"
+  const match = text.match(/^([A-Za-z0-9\s,–—\.\/:&]+)!(\s*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]?)(.*)$/u);
+  if (match) {
+    const prefix = match[1].trim();
+    const emoji = match[2] ? match[2].trim() + " " : "";
+    const rest = match[3] || "";
+    return `${prefix}, ${name}! ${emoji}${rest}`.replace(/\s+/g, " ").trim();
+  }
+
+  return `Hey ${name}! 👋 ${text}`;
+}
+
+/**
  * Get the contextual nudge message
  * @param {string} frequencyType - "3hr" | "3x" | "night_only"
  * @param {string} timeSlot - "12PM" | "3PM" | "6PM" | "7PM" | "9PM" | "10:30PM" | "11PM" | "12AM"
  * @param {Date} [now] - Date object
+ * @param {string} [userName] - Optional user name
  * @returns {string} Nudge message
  */
-function getNudgeMessage(frequencyType, timeSlot, now = new Date()) {
+function getNudgeMessage(frequencyType, timeSlot, now = new Date(), userName = null) {
   const istString = now.toLocaleDateString("en-US", {
     timeZone: "Asia/Kolkata",
     weekday: "long",
@@ -348,11 +403,20 @@ function getNudgeMessage(frequencyType, timeSlot, now = new Date()) {
   };
 
   const useDayVariant = shouldMentionDay(frequencyType, timeSlot, now);
-  return useDayVariant ? slotData.day : slotData.neutral;
+  let messageText = useDayVariant ? slotData.day : slotData.neutral;
+
+  // Personalize with user name in ~30% of nudges
+  if (userName && shouldIncludeUserName(userName, frequencyType, timeSlot, now)) {
+    messageText = injectNameIntoNudge(messageText, userName);
+  }
+
+  return messageText;
 }
 
 module.exports = {
   NUDGE_VARIANTS,
   shouldMentionDay,
+  shouldIncludeUserName,
+  injectNameIntoNudge,
   getNudgeMessage,
 };

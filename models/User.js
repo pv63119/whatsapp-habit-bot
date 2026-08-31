@@ -8,10 +8,15 @@ const userSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    name: {
+      type: String,
+      default: null,
+    },
     userState: {
       type: String,
       enum: [
         "new_user",
+        "onboarding_name",
         "onboarding_d1_step2",
         "onboarding_d1_step3",
         "onboarding_d1_step4",

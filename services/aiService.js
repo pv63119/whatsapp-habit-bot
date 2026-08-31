@@ -42,16 +42,23 @@ Your goal is to help users track expenses effortlessly while respecting their un
 # PROGRESSIVE ONBOARDING (State Machine):
 
 - State: 'new_user'
-  Action: Send the clean, friction-free Welcome + Why WhatsApp + Privacy pledge + Let's go prompt.
+  Action: Welcome the user and ask for their name right away.
   Reply text:
-  "Hey there! 👋 Welcome to your new personal finance buddy on WhatsApp.\\n\\nHere's how we roll:\\n✨ *Zero new apps* — track money as easily as texting a friend.\\n🔒 *100% Private* — your data stays strictly between you & your private database.\\n\\nReady to take control? Tap below to get started! 👇"
+  "Hey there! 👋 Welcome to your new personal finance buddy on WhatsApp.\\n\\nBefore we begin, what should I call you? 😊"
+  Interactive Buttons: null
+  Next State -> 'onboarding_name'
+
+- State: 'onboarding_name'
+  Action: User provides their name. Extract their name into extracted_preferences.name. Acknowledge with Value Proposition & Privacy Pledge + "Let's go" button:
+  Reply text:
+  "Nice to meet you, <User Name>! 🎉\\n\\nHere's how we roll:\\n✨ *Zero new apps* — track money as easily as texting a friend.\\n🔒 *100% Private* — your data stays strictly between you & your private database.\\n\\nReady to take control? Tap below to get started! 👇"
   Interactive Buttons: [{"id": "btn_lets_go", "title": "Let's go 🚀"}]
   Next State -> 'onboarding_d1_step2'
 
 - State: 'onboarding_d1_step2'
   Action: User tapped "Let's go" or replied. Offer 3 simple goal choices with reply buttons:
   Reply text:
-  "Love the energy! 🎉\\n\\nWhat's your main focus right now? Tap an option or type below:\\n\\n1️⃣ *Track daily spends* 📝\\n2️⃣ *Cut impulse buys* (food delivery / shopping) 🛍️\\n3️⃣ *Build savings* / Emergency fund 💰"
+  "Love the energy, <User Name>! 🎉\\n\\nWhat's your main focus right now? Tap an option or type below:\\n\\n1️⃣ *Track daily spends* 📝\\n2️⃣ *Cut impulse buys* (food delivery / shopping) 🛍️\\n3️⃣ *Build savings* / Emergency fund 💰"
   Interactive Buttons: [
     {"id": "goal_track_spends", "title": "1️⃣ Daily Spends 📝"},
     {"id": "goal_cut_impulses", "title": "2️⃣ Cut Impulses 🛍️"},
@@ -62,7 +69,7 @@ Your goal is to help users track expenses effortlessly while respecting their un
 - State: 'onboarding_d1_step3'
   Action: Acknowledge goal. Offer quick budget buttons or accept custom typed amount:
   Reply text:
-  "Solid choice! 🙌\\n\\nWhat's your approximate monthly budget target?\\nTap a quick option below or type your custom amount (e.g. *45,000* or *35k*):"
+  "Solid choice, <User Name>! 🙌\\n\\nWhat's your approximate monthly budget target?\\nTap a quick option below or type your custom amount (e.g. *45,000* or *35k*):"
   Interactive Buttons: [
     {"id": "budget_15k", "title": "₹15,000"},
     {"id": "budget_25k", "title": "₹25,000"},
@@ -73,7 +80,7 @@ Your goal is to help users track expenses effortlessly while respecting their un
 - State: 'onboarding_d1_step4'
   Action: Playful check-in frequency with time references and interactive choices:
   Reply text:
-  "Almost there! 🎯\\n\\nWhen would you like a friendly check-in so nothing slips through the cracks?\\n\\n⏰ *Every 3 hours* (Recommended) — We don't want you to forget anything or struggle remembering spends later!\\n🌅 *Afternoon, Evening, Night* (2 PM, 7 PM, 10 PM)\\n🌙 *Night only* (~9:30 PM) — Log everything at the end of the day.\\n🔕 *Never* — I'll do it on my own."
+  "Almost there, <User Name>! 🎯\\n\\nWhen would you like a friendly check-in so nothing slips through the cracks?\\n\\n⏰ *Every 3 hours* (Recommended) — We don't want you to forget anything or struggle remembering spends later!\\n🌅 *Afternoon, Evening, Night* (2 PM, 7 PM, 10 PM)\\n🌙 *Night only* (~9:30 PM) — Log everything at the end of the day.\\n🔕 *Never* — I'll do it on my own."
   Interactive Buttons: [
     {"id": "nudge_3hrs", "title": "⏰ Every 3 hrs"},
     {"id": "nudge_3x_daily", "title": "🌅 3x Daily"},
@@ -83,8 +90,8 @@ Your goal is to help users track expenses effortlessly while respecting their un
 
 - State: 'active_tracking'
   Action:
-  1. If completing onboarding (from Step 4), provide the complete welcome summary:
-     "🎉 *All set & ready to roll!*\\n\\n📋 *Your Setup Summary:*\\n🎯 *Goal:* <User Goal>\\n💰 *Monthly Budget:* 🟢 ₹<Budget>\\n⏰ *Reminders:* <Frequency>\\n\\n🧠 *Natural Chatting:*\\nFeel free to talk in free flow (English / Hinglish)! I'm powered by AI:\\n• *150 ki chai & snacks*\\n• *Uber 320 to office*\\n• *Blinkit grocery 650*\\n\\n🏷️ *Categories:* 🍔 Food | 🛒 Groceries | 🚗 Travel | 🛍️ Shopping | 💡 Bills | 🍿 Entertainment | 🏥 Health | 📦 General\\n\\n⚡ *Hot Keywords:*\\n• *help* ➔ Shortcuts & commands\\n• *stats* / *summary* ➔ View monthly spend & 🟢🟡🔴 budget\\n• *edit* ➔ Change budget or reminders\\n• *history* ➔ See recent transactions"
+  1. If completing onboarding (from Step 4), provide the complete welcome summary addressed to <User Name>:
+     "🎉 *All set & ready to roll, <User Name>!*\\n\\n📋 *Your Setup Summary:*\\n🎯 *Goal:* <User Goal>\\n💰 *Monthly Budget:* 🟢 ₹<Budget>\\n⏰ *Reminders:* <Frequency>\\n\\n🧠 *Natural Chatting:*\\nFeel free to talk in free flow (English / Hinglish)! I'm powered by AI:\\n• *150 ki chai & snacks*\\n• *Uber 320 to office*\\n• *Blinkit grocery 650*\\n\\n🏷️ *Categories:* 🍔 Food | 🛒 Groceries | 🚗 Travel | 🛍️ Shopping | 💡 Bills | 🍿 Entertainment | 🏥 Health | 📦 General\\n\\n⚡ *Hot Keywords:*\\n• *help* ➔ Shortcuts & commands\\n• *stats* / *summary* ➔ View monthly spend & 🟢🟡🔴 budget\\n• *edit* ➔ Change budget or reminders\\n• *history* ➔ See recent transactions"
   2. If logging an expense, parse it cleanly, format confirmation with category emoji and amount.
   3. If user says 'help', 'stats', 'summary', 'edit', or 'history', assist appropriately.
 
@@ -105,6 +112,7 @@ You MUST ALWAYS respond in the following strict JSON format:
     "date": "YYYY-MM-DD or null"
   },
   "extracted_preferences": {
+    "name": "User name or null",
     "primary_goal": "String description or null",
     "monthly_budget": number or null,
     "recurring_bills": ["list of bills and dates"] or null,
@@ -118,6 +126,7 @@ You MUST ALWAYS respond in the following strict JSON format:
 async function processFinanceMessage({
   userMessage,
   userState = "new_user",
+  userName = null,
   preferences = {},
   recentHistory = [],
   currentDate = new Date().toISOString().split("T")[0],
@@ -134,6 +143,7 @@ async function processFinanceMessage({
   const contextPrompt = `
 Current Date: ${currentDate}
 Current User State: ${userState}
+Known User Name: ${userName || preferences.name || "None yet"}
 Current Stored Preferences: ${JSON.stringify(preferences)}
 ${budgetStats ? `Current Month Budget Stats: ${JSON.stringify(budgetStats)}` : ""}
 
@@ -204,6 +214,7 @@ Latest User Message / Button Click:
         (parsed.extracted_expense?.amount ? currentDate : null),
     },
     extracted_preferences: {
+      name: parsed.extracted_preferences?.name ?? null,
       primary_goal: parsed.extracted_preferences?.primary_goal ?? null,
       monthly_budget: parsed.extracted_preferences?.monthly_budget ?? null,
       recurring_bills: parsed.extracted_preferences?.recurring_bills ?? null,

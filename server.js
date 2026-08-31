@@ -297,6 +297,7 @@ app.post("/webhook", async (req, res) => {
       const aiResult = await processFinanceMessage({
         userMessage: incomingText,
         userState: user.userState,
+        userName: user.name,
         preferences: user.preferences,
         recentHistory: user.conversationHistory.slice(-6),
         budgetStats: {
@@ -309,15 +310,16 @@ app.post("/webhook", async (req, res) => {
 
       console.log(`🤖 AI Response:`, JSON.stringify(aiResult, null, 2));
 
-      // 3. Update User State and Preferences in MongoDB
+      // 3. Update User State, Name, and Preferences in MongoDB
       if (aiResult.user_state) {
         user.userState = aiResult.user_state;
       }
 
       if (aiResult.extracted_preferences) {
-        const { primary_goal, monthly_budget, recurring_bills, nudge_frequency } =
+        const { name, primary_goal, monthly_budget, recurring_bills, nudge_frequency } =
           aiResult.extracted_preferences;
 
+        if (name) user.name = name;
         if (primary_goal) user.preferences.primaryGoal = primary_goal;
         if (monthly_budget != null) user.preferences.monthlyBudget = monthly_budget;
         if (nudge_frequency) user.preferences.nudgeFrequency = nudge_frequency;

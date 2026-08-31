@@ -5,7 +5,8 @@ const User = require("../models/User");
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "habit_bot_rzp_secret_123";
-const DEFAULT_UPI_ID = process.env.PAYMENT_UPI_ID || "paytm.habitbot@icici"; // Fallback UPI ID for testing
+const RAZORPAY_PAYMENT_LINK = process.env.RAZORPAY_PAYMENT_LINK; // Direct Razorpay Payment Page URL
+const PAYMENT_UPI_ID = process.env.PAYMENT_UPI_ID; // Custom UPI ID
 
 /**
  * Check if a user currently has an active paid subscription
@@ -21,7 +22,17 @@ function isUserSubscribed(user) {
  * Generate a dynamic Payment Link for the ₹69 Monthly Membership
  */
 async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, planName = "HabitBot Monthly Membership" }) {
-  // If Razorpay API credentials are configured, create a live Razorpay Payment Link
+  // Option 1: Direct Razorpay Payment Page / Link configured in environment
+  if (RAZORPAY_PAYMENT_LINK) {
+    return {
+      paymentUrl: RAZORPAY_PAYMENT_LINK,
+      amount,
+      planName,
+      source: "static_link",
+    };
+  }
+
+  // Option 2: Live Razorpay API Keys configured
   if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
     try {
       const authHeader = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
@@ -59,24 +70,23 @@ async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, pl
         paymentLinkId: response.data.id,
         amount,
         planName,
-        isLiveGateway: true,
+        source: "api",
       };
     } catch (err) {
       console.error("❌ Razorpay API error:", err.response ? err.response.data : err.message);
-      // Fallback to sandbox link on error
     }
   }
 
-  // Sandbox / UPI Fallback Link
-  const encodedName = encodeURIComponent("HabitBot Membership");
-  const upiLink = `upi://pay?pa=${DEFAULT_UPI_ID}&pn=${encodedName}&am=${amount}&cu=INR&tn=${encodeURIComponent("HabitBot Monthly ₹69")}`;
+  // Option 3: UPI ID link or fallback
+  const upiId = PAYMENT_UPI_ID || "priyanshu@upi";
+  const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent("HabitBot")}&am=${amount}&cu=INR&tn=${encodeURIComponent("HabitBot Monthly")}`;
 
   return {
-    paymentUrl: `https://rzp.io/i/habitbot-69?amount=${amount}&phone=${phoneNumber}`,
+    paymentUrl: RAZORPAY_PAYMENT_LINK || `https://rzp.io/l/habitbot-monthly`,
     upiUri: upiLink,
     amount,
     planName,
-    isLiveGateway: false,
+    source: "fallback",
   };
 }
 

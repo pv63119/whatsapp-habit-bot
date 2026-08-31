@@ -8,6 +8,11 @@ const User = require("./models/User");
 const Expense = require("./models/Expense");
 const { processFinanceMessage, FIXED_CATEGORIES } = require("./services/aiService");
 const { getNudgeMessage } = require("./services/nudgeService");
+const {
+  createPaymentLink,
+  verifyRazorpaySignature,
+  activateUserSubscription,
+} = require("./services/paymentService");
 
 // Environment Variables
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -195,7 +200,7 @@ async function getMonthlyBudgetStats(phoneNumber, monthlyBudget) {
   };
 }
 
-// Root Health Check endpoint (for Keep-Alive pings like UptimeRobot)
+// Root Health Check endpoint (for Keep-Alive pings like UptimeRobot / cron-job.org)
 app.get("/", (req, res) => {
   res.status(200).send("🟢 Personal Finance WhatsApp Bot is healthy and running!");
 });
@@ -214,7 +219,56 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// 2. POST route: Meta message receiver and AI brain processor
+// 2. POST route: Razorpay Payment Confirmation Webhook
+app.post("/webhook/razorpay", async (req, res) => {
+  try {
+    const signature = req.headers["x-razorpay-signature"];
+    const event = req.body;
+
+    if (signature && !verifyRazorpaySignature(req.body, signature)) {
+      console.warn("⚠️ Invalid Razorpay webhook signature");
+      return res.sendStatus(400);
+    }
+
+    if (event.event === "payment_link.paid" || event.event === "payment.captured") {
+      const paymentEntity = event.payload?.payment?.entity || event.payload?.payment_link?.entity;
+      const phoneNumber =
+        paymentEntity?.notes?.phoneNumber ||
+        paymentEntity?.customer?.contact?.replace("+", "");
+      const planName = paymentEntity?.notes?.planName || "Pro Plan";
+      const amount = (paymentEntity?.amount || 9900) / 100;
+      const isAnnual = amount >= 700;
+
+      if (phoneNumber) {
+        await activateUserSubscription(phoneNumber, {
+          paymentId: paymentEntity.id,
+          amount,
+          planName,
+          durationDays: isAnnual ? 365 : 30,
+        });
+
+        const confirmationMsg =
+          `🎉 *Payment Successful! Welcome to HabitBot Pro!*\n\n` +
+          `Your *${planName}* is now active for ${isAnnual ? "1 Year" : "30 Days"}! 🚀\n\n` +
+          `✨ *Unlimited Features Unlocked:*\n` +
+          `• Instant AI bill & receipt scanning\n` +
+          `• Auto multi-item split categorization\n` +
+          `• Proactive budget pacing alerts\n` +
+          `• Priority support\n\n` +
+          `Thank you for supporting HabitBot! Let's conquer your financial goals together. 💪`;
+
+        await sendWhatsAppMessage(phoneNumber, confirmationMsg);
+      }
+    }
+
+    res.status(200).json({ status: "ok" });
+  } catch (err) {
+    console.error("❌ Error handling Razorpay webhook:", err);
+    res.sendStatus(500);
+  }
+});
+
+// 3. POST route: Meta message receiver and AI brain processor
 app.post("/webhook", async (req, res) => {
   // Acknowledge Meta immediately to prevent timeout retries
   res.sendStatus(200);
@@ -354,6 +408,67 @@ app.post("/webhook", async (req, res) => {
               : `💰 *Updated Total Spent:* ₹${stats.totalSpent.toLocaleString("en-IN")}`);
           await sendWhatsAppMessage(senderPhone, undoMsg);
         }
+        return;
+      }
+
+      // Quick Action Handler: 'upgrade', 'pricing', 'subscribe', 'pay', 'pro'
+      if (
+        user.userState === "active_tracking" &&
+        (lowerText === "upgrade" ||
+          lowerText === "pricing" ||
+          lowerText === "subscribe" ||
+          lowerText === "pay" ||
+          lowerText === "pro" ||
+          lowerText === "pro plan")
+      ) {
+        const pricingMsg =
+          `💎 *HabitBot Pro Plan*\n\n` +
+          `Unlock unlimited AI bill scanning, multi-item split categorization, and proactive budget pacing alerts!\n\n` +
+          `💰 *Special Launch Pricing:*\n` +
+          `• *Monthly:* ₹99 / month\n` +
+          `• *Annual (Save 33%):* ₹799 / year\n\n` +
+          `Tap below to generate your instant payment link:`;
+        const pricingButtons = [
+          { id: "pay_monthly_99", title: "💳 Pay ₹99 (Monthly)" },
+          { id: "pay_annual_799", title: "⭐ Pay ₹799 (Annual)" },
+        ];
+        await sendWhatsAppInteractiveButtons(senderPhone, pricingMsg, pricingButtons);
+        return;
+      }
+
+      // Quick Action Handler: 'pay_monthly_99' / '💳 pay ₹99 (monthly)'
+      if (lowerText === "pay_monthly_99" || lowerText === "💳 pay ₹99 (monthly)") {
+        const payment = await createPaymentLink({
+          phoneNumber: senderPhone,
+          name: user.name || "Friend",
+          amount: 99,
+          planName: "Pro Monthly Plan",
+        });
+        const payMsg =
+          `💳 *HabitBot Pro — Monthly Plan*\n\n` +
+          `Amount: *₹99*\n\n` +
+          `Tap the link below to complete payment via UPI, Google Pay, PhonePe, Paytm, or Card:\n\n` +
+          `👉 ${payment.paymentUrl}\n\n` +
+          `_Your Pro subscription activates automatically as soon as payment is confirmed!_ 🎉`;
+        await sendWhatsAppMessage(senderPhone, payMsg);
+        return;
+      }
+
+      // Quick Action Handler: 'pay_annual_799' / '⭐ pay ₹799 (annual)'
+      if (lowerText === "pay_annual_799" || lowerText === "⭐ pay ₹799 (annual)") {
+        const payment = await createPaymentLink({
+          phoneNumber: senderPhone,
+          name: user.name || "Friend",
+          amount: 799,
+          planName: "Pro Annual Plan",
+        });
+        const payMsg =
+          `⭐ *HabitBot Pro — Annual Plan (Best Value)*\n\n` +
+          `Amount: *₹799* (Save ₹389/year!)\n\n` +
+          `Tap the link below to complete payment via UPI, Google Pay, PhonePe, Paytm, or Card:\n\n` +
+          `👉 ${payment.paymentUrl}\n\n` +
+          `_Your Pro subscription activates automatically as soon as payment is confirmed!_ 🎉`;
+        await sendWhatsAppMessage(senderPhone, payMsg);
         return;
       }
 

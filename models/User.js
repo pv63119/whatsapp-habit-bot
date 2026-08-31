@@ -32,6 +32,29 @@ const userSchema = new mongoose.Schema(
       recurringBills: { type: [String], default: [] },
       nudgeFrequency: { type: String, default: null },
     },
+    subscription: {
+      status: {
+        type: String,
+        enum: ["trial", "active", "expired"],
+        default: "trial",
+      },
+      plan: {
+        type: String,
+        default: "Pro Trial",
+      },
+      trialExpiresAt: {
+        type: Date,
+        default: () => new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days free trial
+      },
+      validUntil: {
+        type: Date,
+        default: null,
+      },
+      lastPaymentId: {
+        type: String,
+        default: null,
+      },
+    },
     conversationHistory: [
       {
         role: { type: String, enum: ["user", "model"], required: true },

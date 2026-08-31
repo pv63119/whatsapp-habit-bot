@@ -195,6 +195,11 @@ async function getMonthlyBudgetStats(phoneNumber, monthlyBudget) {
   };
 }
 
+// Root Health Check endpoint (for Keep-Alive pings like UptimeRobot)
+app.get("/", (req, res) => {
+  res.status(200).send("🟢 Personal Finance WhatsApp Bot is healthy and running!");
+});
+
 // 1. GET route: Meta webhook verification handshake
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];

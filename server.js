@@ -290,6 +290,78 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
+      // Quick Action Handler: 'undo' or 'delete last'
+      if (
+        user.userState === "active_tracking" &&
+        (lowerText === "undo" || lowerText === "delete last" || lowerText === "delete last expense")
+      ) {
+        const lastExpense = await Expense.findOne({ phoneNumber: senderPhone }).sort({ createdAt: -1 });
+        if (!lastExpense) {
+          await sendWhatsAppMessage(senderPhone, "📝 No recent expenses found to delete!");
+        } else {
+          await Expense.findByIdAndDelete(lastExpense._id);
+          const stats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
+          const undoMsg =
+            `🗑️ *Deleted last transaction:*\n` +
+            `${CATEGORY_EMOJI_MAP[lastExpense.category] || "📦"} *₹${lastExpense.amount}* - ${lastExpense.description}\n\n` +
+            (stats.monthlyBudget > 0
+              ? `${stats.statusEmoji} *Updated Remaining Budget:* ₹${stats.remaining.toLocaleString("en-IN")}`
+              : `💰 *Updated Total Spent:* ₹${stats.totalSpent.toLocaleString("en-IN")}`);
+          await sendWhatsAppMessage(senderPhone, undoMsg);
+        }
+        return;
+      }
+
+      // Quick Action Handler: 'edit' or 'settings'
+      if (user.userState === "active_tracking" && (lowerText === "edit" || lowerText === "settings" || lowerText === "preferences")) {
+        const editMsg =
+          `⚙️ *Account Settings & Preferences*\n\n` +
+          `What would you like to update? Tap an option below or type directly:`;
+        const editButtons = [
+          { id: "edit_name", title: "👤 Edit Name" },
+          { id: "edit_budget", title: "💰 Edit Budget" },
+          { id: "edit_reminders", title: "⏰ Edit Reminders" },
+        ];
+        await sendWhatsAppInteractiveButtons(senderPhone, editMsg, editButtons);
+        return;
+      }
+
+      // Quick Action Handler: '👤 edit name' or 'edit name'
+      if (lowerText === "👤 edit name" || lowerText === "edit name") {
+        user.userState = "editing_name";
+        await user.save();
+        await sendWhatsAppMessage(senderPhone, "Got it! What should I call you from now on? 😊");
+        return;
+      }
+
+      // Quick Action Handler: '💰 edit budget' or 'edit budget'
+      if (lowerText === "💰 edit budget" || lowerText === "edit budget") {
+        user.userState = "editing_budget";
+        await user.save();
+        const budgetMsg = "Sure! What should your new monthly budget target be? Tap below or type your amount:";
+        const budgetButtons = [
+          { id: "budget_25k", title: "₹25,000" },
+          { id: "budget_40k", title: "₹40,000" },
+          { id: "budget_60k", title: "₹60,000" },
+        ];
+        await sendWhatsAppInteractiveButtons(senderPhone, budgetMsg, budgetButtons);
+        return;
+      }
+
+      // Quick Action Handler: '⏰ edit reminders' or 'edit reminders'
+      if (lowerText === "⏰ edit reminders" || lowerText === "edit reminders") {
+        user.userState = "editing_reminders";
+        await user.save();
+        const reminderMsg = "How often would you like me to check in with you?";
+        const reminderButtons = [
+          { id: "nudge_3hrs", title: "⏰ Every 3 hrs" },
+          { id: "nudge_3x_daily", title: "🌅 3x Daily" },
+          { id: "nudge_night_only", title: "🌙 Night Only" },
+        ];
+        await sendWhatsAppInteractiveButtons(senderPhone, reminderMsg, reminderButtons);
+        return;
+      }
+
       // Fetch current monthly stats for AI context
       const currentStats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
 
@@ -310,17 +382,25 @@ app.post("/webhook", async (req, res) => {
 
       console.log(`🤖 AI Response:`, JSON.stringify(aiResult, null, 2));
 
-      // 3. Update User State, Name, and Preferences in MongoDB
+      // 3. Handle Undo / Delete action from AI
+      if (aiResult.action === "delete_last_expense") {
+        const lastExpense = await Expense.findOne({ phoneNumber: senderPhone }).sort({ createdAt: -1 });
+        if (lastExpense) {
+          await Expense.findByIdAndDelete(lastExpense._id);
+          console.log(`🗑️ Deleted last expense ${lastExpense._id} for ${senderPhone}`);
+        }
+      }
+
+      // 4. Update User State, Name, and Preferences in MongoDB
       if (aiResult.user_state) {
         user.userState = aiResult.user_state;
       }
 
       if (aiResult.extracted_preferences) {
-        const { name, primary_goal, monthly_budget, recurring_bills, nudge_frequency } =
+        const { name, monthly_budget, recurring_bills, nudge_frequency } =
           aiResult.extracted_preferences;
 
         if (name) user.name = name;
-        if (primary_goal) user.preferences.primaryGoal = primary_goal;
         if (monthly_budget != null) user.preferences.monthlyBudget = monthly_budget;
         if (nudge_frequency) user.preferences.nudgeFrequency = nudge_frequency;
         if (Array.isArray(recurring_bills) && recurring_bills.length > 0) {
@@ -339,9 +419,10 @@ app.post("/webhook", async (req, res) => {
 
       await user.save();
 
-      // 4. Save Expense if extracted and not needing clarification
+      // 5. Save Expense if extracted and not needing clarification
       if (
         !aiResult.needs_clarification &&
+        aiResult.action !== "delete_last_expense" &&
         aiResult.extracted_expense &&
         aiResult.extracted_expense.amount != null
       ) {
@@ -359,7 +440,7 @@ app.post("/webhook", async (req, res) => {
         console.log(`💰 Expense recorded for ${senderPhone}: ₹${expense.amount} (${category})`);
       }
 
-      // 5. Send reply back to user (Interactive Buttons or Text)
+      // 6. Send reply back to user (Interactive Buttons or Text)
       if (aiResult.interactive_buttons && aiResult.interactive_buttons.length > 0) {
         await sendWhatsAppInteractiveButtons(
           senderPhone,

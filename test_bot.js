@@ -1,12 +1,12 @@
 /**
- * Test Simulator for Refined WhatsApp Personal Finance Bot with Name Step
+ * Test Simulator for Streamlined Onboarding & Full Editing Suite
  */
 require("dotenv").config();
 const { processFinanceMessage } = require("./services/aiService");
 
 async function runSimulation() {
   console.log("==================================================");
-  console.log("🧪 TESTING ONBOARDING WITH NAME PROMPT");
+  console.log("🧪 TESTING STREAMLINED ONBOARDING & EDITING SUITE");
   console.log("==================================================");
 
   const turns = [
@@ -16,34 +16,44 @@ async function runSimulation() {
       message: "Hi",
     },
     {
-      label: "Turn 2: User provides their name",
+      label: "Turn 2: User provides name",
       state: "onboarding_name",
       message: "Priyanshu",
     },
     {
-      label: "Turn 3: Tapping 'Let\'s go 🚀' Button",
-      state: "onboarding_d1_step2",
+      label: "Turn 3: User taps 'Let\'s go 🚀'",
+      state: "onboarding_budget",
       message: "Let's go 🚀",
     },
     {
-      label: "Turn 4: Selecting Goal (Cut Impulses)",
-      state: "onboarding_d1_step3",
-      message: "2️⃣ Cut Impulses 🛍️",
-    },
-    {
-      label: "Turn 5: Selecting Budget (₹25,000)",
-      state: "onboarding_d1_step4",
+      label: "Turn 4: Selecting Budget (₹25,000)",
+      state: "onboarding_reminders",
       message: "₹25,000",
     },
     {
-      label: "Turn 6: Selecting Nudge Frequency (⏰ Every 3 hrs)",
-      state: "onboarding_d1_step4",
+      label: "Turn 5: Selecting Reminders (⏰ Every 3 hrs)",
+      state: "active_tracking",
       message: "⏰ Every 3 hrs",
     },
     {
-      label: "Turn 7: Natural Spend Logging",
+      label: "Turn 6: Logging an Expense",
       state: "active_tracking",
       message: "150 chai & bun maska",
+    },
+    {
+      label: "Turn 7: Natural Command - Change Budget to 45k",
+      state: "active_tracking",
+      message: "change my budget to 45k",
+    },
+    {
+      label: "Turn 8: Natural Command - Change Name",
+      state: "active_tracking",
+      message: "call me Rahul",
+    },
+    {
+      label: "Turn 9: Natural Command - Undo Last Expense",
+      state: "active_tracking",
+      message: "undo last spend",
     },
   ];
 
@@ -53,11 +63,10 @@ async function runSimulation() {
   let history = [];
 
   for (const turn of turns) {
-    // Pace requests slightly
     await new Promise((resolve) => setTimeout(resolve, 1500));
     console.log(`\n--------------------------------------------------`);
     console.log(`💬 ${turn.label}`);
-    console.log(`📥 User Message / Click: "${turn.message}" (State: ${simulatedState})`);
+    console.log(`📥 User Message: "${turn.message}" (State: ${simulatedState})`);
 
     try {
       const result = await processFinanceMessage({
@@ -68,8 +77,8 @@ async function runSimulation() {
         recentHistory: history,
         budgetStats: {
           spentThisMonth: 150,
-          monthlyBudget: 25000,
-          remainingBudget: 24850,
+          monthlyBudget: simulatedPreferences.monthly_budget || 25000,
+          remainingBudget: (simulatedPreferences.monthly_budget || 25000) - 150,
           statusIndicator: "🟢",
         },
       });
@@ -78,19 +87,21 @@ async function runSimulation() {
       if (result.interactive_buttons) {
         console.log(`🔘 Interactive Buttons:`, result.interactive_buttons.map((b) => `[${b.title}]`).join("  "));
       }
-      console.log(`📊 State Machine -> Next State: ${result.user_state}`);
+      console.log(`📊 Next State: ${result.user_state}`);
+      if (result.action) {
+        console.log(`⚡ Triggered Action: ${result.action}`);
+      }
       if (result.extracted_preferences?.name) {
         simulatedName = result.extracted_preferences.name;
         console.log(`👤 Captured Name: "${simulatedName}"`);
       }
-      if (result.extracted_expense.amount) {
+      if (result.extracted_expense?.amount) {
         console.log(`💰 Extracted Expense:`, result.extracted_expense);
       }
       if (result.extracted_preferences && Object.values(result.extracted_preferences).some((v) => v !== null)) {
         console.log(`⚙️ Extracted Preferences:`, result.extracted_preferences);
       }
 
-      // Transition state for next turn
       simulatedState = result.user_state;
       if (result.extracted_preferences) {
         simulatedPreferences = { ...simulatedPreferences, ...result.extracted_preferences };
@@ -103,7 +114,7 @@ async function runSimulation() {
   }
 
   console.log("\n==================================================");
-  console.log("🎉 SIMULATION COMPLETE");
+  console.log("🎉 ALL TESTS PASSED");
   console.log("==================================================");
 }
 

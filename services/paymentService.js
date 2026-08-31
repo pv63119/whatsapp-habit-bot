@@ -10,7 +10,7 @@ const DEFAULT_UPI_ID = process.env.PAYMENT_UPI_ID || "paytm.habitbot@icici"; // 
 /**
  * Generate a dynamic Payment Link via Razorpay or Fallback UPI Link
  */
-async function createPaymentLink({ phoneNumber, name = "Friend", amount = 99, planName = "Pro Monthly" }) {
+async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, planName = "Pro Monthly" }) {
   // If Razorpay API credentials are configured, create a live Razorpay Payment Link
   if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
     try {

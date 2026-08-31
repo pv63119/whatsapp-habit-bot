@@ -425,28 +425,28 @@ app.post("/webhook", async (req, res) => {
           `💎 *HabitBot Pro Plan*\n\n` +
           `Unlock unlimited AI bill scanning, multi-item split categorization, and proactive budget pacing alerts!\n\n` +
           `💰 *Special Launch Pricing:*\n` +
-          `• *Monthly:* ₹99 / month\n` +
-          `• *Annual (Save 33%):* ₹799 / year\n\n` +
+          `• *Monthly:* ₹69 / month\n` +
+          `• *Annual (Save 28%):* ₹599 / year\n\n` +
           `Tap below to generate your instant payment link:`;
         const pricingButtons = [
-          { id: "pay_monthly_99", title: "💳 Pay ₹99 (Monthly)" },
-          { id: "pay_annual_799", title: "⭐ Pay ₹799 (Annual)" },
+          { id: "pay_monthly_69", title: "💳 Pay ₹69 (Monthly)" },
+          { id: "pay_annual_599", title: "⭐ Pay ₹599 (Annual)" },
         ];
         await sendWhatsAppInteractiveButtons(senderPhone, pricingMsg, pricingButtons);
         return;
       }
 
-      // Quick Action Handler: 'pay_monthly_99' / '💳 pay ₹99 (monthly)'
-      if (lowerText === "pay_monthly_99" || lowerText === "💳 pay ₹99 (monthly)") {
+      // Quick Action Handler: 'pay_monthly_69' / '💳 pay ₹69 (monthly)'
+      if (lowerText === "pay_monthly_69" || lowerText === "💳 pay ₹69 (monthly)") {
         const payment = await createPaymentLink({
           phoneNumber: senderPhone,
           name: user.name || "Friend",
-          amount: 99,
+          amount: 69,
           planName: "Pro Monthly Plan",
         });
         const payMsg =
           `💳 *HabitBot Pro — Monthly Plan*\n\n` +
-          `Amount: *₹99*\n\n` +
+          `Amount: *₹69*\n\n` +
           `Tap the link below to complete payment via UPI, Google Pay, PhonePe, Paytm, or Card:\n\n` +
           `👉 ${payment.paymentUrl}\n\n` +
           `_Your Pro subscription activates automatically as soon as payment is confirmed!_ 🎉`;
@@ -454,17 +454,17 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
-      // Quick Action Handler: 'pay_annual_799' / '⭐ pay ₹799 (annual)'
-      if (lowerText === "pay_annual_799" || lowerText === "⭐ pay ₹799 (annual)") {
+      // Quick Action Handler: 'pay_annual_599' / '⭐ pay ₹599 (annual)'
+      if (lowerText === "pay_annual_599" || lowerText === "⭐ pay ₹599 (annual)") {
         const payment = await createPaymentLink({
           phoneNumber: senderPhone,
           name: user.name || "Friend",
-          amount: 799,
+          amount: 599,
           planName: "Pro Annual Plan",
         });
         const payMsg =
           `⭐ *HabitBot Pro — Annual Plan (Best Value)*\n\n` +
-          `Amount: *₹799* (Save ₹389/year!)\n\n` +
+          `Amount: *₹599* (Save ₹229/year!)\n\n` +
           `Tap the link below to complete payment via UPI, Google Pay, PhonePe, Paytm, or Card:\n\n` +
           `👉 ${payment.paymentUrl}\n\n` +
           `_Your Pro subscription activates automatically as soon as payment is confirmed!_ 🎉`;

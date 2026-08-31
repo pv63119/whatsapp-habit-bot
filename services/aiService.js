@@ -95,10 +95,10 @@ Your goal is to help users track expenses effortlessly while respecting their un
   3. If user wants to UPGRADE / SUBSCRIBE / CHECK PRICING:
      - User says 'upgrade', 'subscribe', 'pricing', 'pro plan', 'pay':
        Set "action": "show_pricing".
-       Reply text: "💎 *HabitBot Pro Plan*\\n\\nUnlock unlimited AI receipt scanning, smart split-categorization, proactive budget pacing alerts, and instant CSV exports!\\n\\n💰 *Special Launch Pricing:*\\n• *Monthly:* ₹99 / month\\n• *Annual (Save 33%):* ₹799 / year\\n\\nTap below to get your payment link:"
+       Reply text: "💎 *HabitBot Pro Plan*\\n\\nUnlock unlimited AI receipt scanning, smart split-categorization, proactive budget pacing alerts, and instant CSV exports!\\n\\n💰 *Special Launch Pricing:*\\n• *Monthly:* ₹69 / month\\n• *Annual (Save 28%):* ₹599 / year\\n\\nTap below to get your payment link:"
        Interactive Buttons: [
-         {"id": "pay_monthly_99", "title": "💳 Pay ₹99 (Monthly)"},
-         {"id": "pay_annual_799", "title": "⭐ Pay ₹799 (Annual)"}
+         {"id": "pay_monthly_69", "title": "💳 Pay ₹69 (Monthly)"},
+         {"id": "pay_annual_599", "title": "⭐ Pay ₹599 (Annual)"}
        ]
   4. If user wants to EDIT/CHANGE settings:
      - User says 'edit', 'settings', or 'change preferences':

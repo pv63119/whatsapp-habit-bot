@@ -129,6 +129,32 @@ async function sendWhatsAppInteractiveButtons(to_phone_number, bodyText, buttons
   }
 }
 
+// 3. Download media from WhatsApp Meta Graph API
+async function downloadWhatsAppMedia(mediaId) {
+  if (!mediaId || !WHATSAPP_TOKEN) return null;
+  try {
+    // 1. Get media URL
+    const metaRes = await axios.get(`https://graph.facebook.com/v20.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+    });
+    const mediaUrl = metaRes.data?.url;
+    const mimeType = metaRes.data?.mime_type || "image/jpeg";
+    if (!mediaUrl) return null;
+
+    // 2. Download binary stream
+    const fileRes = await axios.get(mediaUrl, {
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+      responseType: "arraybuffer",
+    });
+
+    const base64 = Buffer.from(fileRes.data).toString("base64");
+    return { base64, mimeType };
+  } catch (err) {
+    console.error("❌ Error downloading WhatsApp media:", err.response ? err.response.data : err.message);
+    return null;
+  }
+}
+
 // Helper: Calculate monthly budget stats with Traffic-Light indicators
 async function getMonthlyBudgetStats(phoneNumber, monthlyBudget) {
   const startOfMonth = new Date();
@@ -210,10 +236,24 @@ app.post("/webhook", async (req, res) => {
 
       const senderPhone = messageData.from;
       let incomingText = "";
+      let imageBase64 = null;
+      let imageMimeType = "image/jpeg";
 
       // Handle text message
       if (messageData.type === "text") {
         incomingText = messageData.text?.body?.trim() || "";
+      }
+      // Handle image / screenshot / receipt
+      else if (messageData.type === "image") {
+        incomingText = messageData.image?.caption?.trim() || "Attached bill receipt screenshot";
+        const mediaId = messageData.image?.id;
+        if (mediaId) {
+          const media = await downloadWhatsAppMedia(mediaId);
+          if (media) {
+            imageBase64 = media.base64;
+            imageMimeType = media.mimeType;
+          }
+        }
       }
       // Handle interactive button click or list selection
       else if (messageData.type === "interactive") {
@@ -224,9 +264,9 @@ app.post("/webhook", async (req, res) => {
           "";
       }
 
-      if (!incomingText) return;
+      if (!incomingText && !imageBase64) return;
 
-      console.log(`📩 Incoming from ${senderPhone}: "${incomingText}"`);
+      console.log(`📩 Incoming from ${senderPhone}: "${incomingText}" ${imageBase64 ? "[Image Attached]" : ""}`);
 
       // 1. Retrieve or create user record
       let user = await User.findOne({ phoneNumber: senderPhone });
@@ -368,6 +408,8 @@ app.post("/webhook", async (req, res) => {
       // 2. Process with AI Brain
       const aiResult = await processFinanceMessage({
         userMessage: incomingText,
+        imageBase64: imageBase64,
+        imageMimeType: imageMimeType,
         userState: user.userState,
         userName: user.name,
         preferences: user.preferences,
@@ -419,25 +461,32 @@ app.post("/webhook", async (req, res) => {
 
       await user.save();
 
-      // 5. Save Expense if extracted and not needing clarification
+      // 5. Save Expenses if extracted (support multi-item receipts & single items)
       if (
         !aiResult.needs_clarification &&
-        aiResult.action !== "delete_last_expense" &&
-        aiResult.extracted_expense &&
-        aiResult.extracted_expense.amount != null
+        aiResult.action !== "delete_last_expense"
       ) {
-        const category = aiResult.extracted_expense.category || "General";
-        const expense = new Expense({
-          phoneNumber: senderPhone,
-          amount: aiResult.extracted_expense.amount,
-          currency: aiResult.extracted_expense.currency || "INR",
-          category: category,
-          description: aiResult.extracted_expense.description || incomingText,
-          date: aiResult.extracted_expense.date || new Date().toISOString().split("T")[0],
-          rawMessage: incomingText,
-        });
-        await expense.save();
-        console.log(`💰 Expense recorded for ${senderPhone}: ₹${expense.amount} (${category})`);
+        const expensesToSave =
+          Array.isArray(aiResult.extracted_expenses) && aiResult.extracted_expenses.length > 0
+            ? aiResult.extracted_expenses
+            : (aiResult.extracted_expense ? [aiResult.extracted_expense] : []);
+
+        for (const exp of expensesToSave) {
+          if (exp.amount != null && !isNaN(Number(exp.amount))) {
+            const category = exp.category || "General";
+            const newExpense = new Expense({
+              phoneNumber: senderPhone,
+              amount: Number(exp.amount),
+              currency: exp.currency || "INR",
+              category: category,
+              description: exp.description || incomingText,
+              date: exp.date || new Date().toISOString().split("T")[0],
+              rawMessage: incomingText,
+            });
+            await newExpense.save();
+            console.log(`💰 Expense recorded for ${senderPhone}: ₹${newExpense.amount} (${category} - ${newExpense.description})`);
+          }
+        }
       }
 
       // 6. Send reply back to user (Interactive Buttons or Text)

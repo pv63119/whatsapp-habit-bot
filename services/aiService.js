@@ -39,6 +39,21 @@ Your goal is to help users track expenses effortlessly while respecting their un
 2. CLARIFICATION PROTOCOL: If an expense message is ambiguous (e.g., "spent 500" without description/category), DO NOT guess. Gently ask for the missing details before logging.
 3. EMPATHY & NATURAL LANGUAGE: The user can chat in natural English or Hinglish (e.g., "150 ki chai", "Uber 320 to office", "Blinkit 600"). Parse amounts, categories, and descriptions effortlessly.
 
+# RECEIPT / INVOICE & MULTI-ITEM LOGGING:
+- The user can upload an IMAGE / SCREENSHOT of an invoice, receipt, or order summary (e.g. Blinkit, Zepto, Swiggy Instamart, Amazon, restaurant bills, retail receipts) OR text a message with multiple purchases.
+- You must carefully extract EVERY individual line item, quantity, and price.
+- Categorize EACH item accurately into its respective category:
+  • Raw food, veggies, fruits, dal, milk, cooking essentials ➔ 🛒 Groceries
+  • Clothing, jeans, apparel, accessories, cosmetics, electronics ➔ 🛍️ Shopping & Lifestyle
+  • Cooked food, restaurant meals, cafes, beverages, desserts ➔ 🍔 Food & Dining
+  • Pet supplies, cat litter, cigarettes, household goods, stationery ➔ 📦 General
+  • Medicines, pharmacy, supplements, doctor consultations ➔ 🏥 Health & Medical
+  • Cabs, auto, metro, parking, fuel ➔ 🚗 Travel & Commute
+  • Electricity, internet, mobile recharge, subscriptions, rent ➔ 💡 Bills & Utilities
+  • Movies, games, concerts ➔ 🍿 Entertainment
+- Include all parsed items in the \`extracted_expenses\` array.
+- In \`reply_to_user\`, provide a clean, beautifully formatted itemized breakdown with emojis, individual item amounts, total order amount, and updated budget status.
+
 # STREAMLINED ONBOARDING (State Machine):
 
 - State: 'new_user'
@@ -80,8 +95,8 @@ Your goal is to help users track expenses effortlessly while respecting their un
 - State: 'active_tracking'
   Action:
   1. If completing onboarding (from Reminders step), provide the complete welcome summary addressed to <User Name>:
-     "🎉 *All set & ready to roll, <User Name>!*\\n\\n📋 *Your Setup Summary:*\\n💰 *Monthly Budget:* 🟢 ₹<Budget>\\n⏰ *Reminders:* <Frequency>\\n\\n🧠 *Natural Chatting:*\\nFeel free to talk in free flow (English / Hinglish)! I'm powered by AI:\\n• *150 ki chai & snacks*\\n• *Uber 320 to office*\\n• *Blinkit grocery 650*\\n\\n🏷️ *Categories:* 🍔 Food | 🛒 Groceries | 🚗 Travel | 🛍️ Shopping | 💡 Bills | 🍿 Entertainment | 🏥 Health | 📦 General\\n\\n⚡ *Hot Keywords:*\\n• *stats* / *summary* ➔ View monthly spend & 🟢🟡🔴 budget\\n• *edit* ➔ Change name, budget, or reminders\\n• *history* ➔ See recent transactions\\n• *undo* ➔ Delete last logged spend\\n• *help* ➔ Shortcuts & commands"
-  2. If logging an expense, parse it cleanly, format confirmation with category emoji and amount.
+     "🎉 *All set & ready to roll, <User Name>!*\\n\\n📋 *Your Setup Summary:*\\n💰 *Monthly Budget:* 🟢 ₹<Budget>\\n⏰ *Reminders:* <Frequency>\\n\\n🧠 *Natural Chatting & Receipts:*\\nFeel free to talk in free flow or send bill screenshots! I'm powered by AI:\\n• *150 ki chai & snacks*\\n• *Uber 320 to office*\\n• *Blinkit screenshot / receipt* (I'll split-categorize each item!)\\n\\n🏷️ *Categories:* 🍔 Food | 🛒 Groceries | 🚗 Travel | 🛍️ Shopping | 💡 Bills | 🍿 Entertainment | 🏥 Health | 📦 General\\n\\n⚡ *Hot Keywords:*\\n• *stats* / *summary* ➔ View monthly spend & 🟢🟡🔴 budget\\n• *edit* ➔ Change name, budget, or reminders\\n• *history* ➔ See recent transactions\\n• *undo* ➔ Delete last logged spend\\n• *help* ➔ Shortcuts & commands"
+  2. If logging an expense (single or receipt with multiple items), parse cleanly, format confirmation with category emojis, amounts, and remaining budget.
   3. If user wants to EDIT/CHANGE settings:
      - User says 'edit', 'settings', or 'change preferences':
        Reply text: "⚙️ *Account Settings & Preferences*\\n\\nWhat would you like to update? Tap below or type directly:"
@@ -151,13 +166,15 @@ You MUST ALWAYS respond in the following strict JSON format:
   "interactive_buttons": [
     { "id": "button_id", "title": "Button Title (max 20 chars)" }
   ] or null,
-  "extracted_expense": {
-    "amount": number or null,
-    "currency": "INR" or null,
-    "category": "Food & Dining" | "Groceries" | "Travel & Commute" | "Shopping & Lifestyle" | "Bills & Utilities" | "Entertainment" | "Health & Medical" | "General" | null,
-    "description": "Short description or null",
-    "date": "YYYY-MM-DD or null"
-  },
+  "extracted_expenses": [
+    {
+      "amount": number,
+      "currency": "INR",
+      "category": "Food & Dining" | "Groceries" | "Travel & Commute" | "Shopping & Lifestyle" | "Bills & Utilities" | "Entertainment" | "Health & Medical" | "General",
+      "description": "Item description",
+      "date": "YYYY-MM-DD"
+    }
+  ],
   "extracted_preferences": {
     "name": "User name or null",
     "monthly_budget": number or null,
@@ -167,10 +184,12 @@ You MUST ALWAYS respond in the following strict JSON format:
 }`;
 
 /**
- * Process a user's message through the OpenAI AI Brain.
+ * Process a user's message (text or image) through the OpenAI Multimodal AI Brain.
  */
 async function processFinanceMessage({
-  userMessage,
+  userMessage = "",
+  imageBase64 = null,
+  imageMimeType = "image/jpeg",
   userState = "new_user",
   userName = null,
   preferences = {},
@@ -196,11 +215,31 @@ ${budgetStats ? `Current Month Budget Stats: ${JSON.stringify(budgetStats)}` : "
 Recent Conversation Context:
 ${recentHistory.map((h) => `${h.role === "user" ? "User" : "Bot"}: ${h.content}`).join("\n")}
 
-Latest User Message / Button Click:
-"${userMessage}"
+Latest User Input:
+"${userMessage || (imageBase64 ? "[Attached Image / Receipt Screenshot]" : "")}"
 `;
 
   const modelName = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+  // Prepare multimodal content parts
+  let userContentParts;
+  if (imageBase64) {
+    userContentParts = [
+      {
+        type: "text",
+        text: `${contextPrompt}\n\n[USER ATTACHED AN IMAGE/RECEIPT SCREENSHOT]. Please parse every line item, amount, category, and provide an itemized breakdown.`,
+      },
+      {
+        type: "image_url",
+        image_url: {
+          url: `data:${imageMimeType};base64,${imageBase64}`,
+          detail: "high",
+        },
+      },
+    ];
+  } else {
+    userContentParts = contextPrompt;
+  }
 
   let response;
   let attempts = 0;
@@ -211,10 +250,10 @@ Latest User Message / Button Click:
         model: modelName,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: contextPrompt },
+          { role: "user", content: userContentParts },
         ],
         response_format: { type: "json_object" },
-        temperature: 0.3,
+        temperature: 0.2,
       });
       break; // Success
     } catch (apiErr) {
@@ -240,6 +279,28 @@ Latest User Message / Button Click:
     throw new Error("Invalid JSON response from AI Brain.");
   }
 
+  // Normalize extracted expenses array
+  let extractedExpenses = [];
+  if (Array.isArray(parsed.extracted_expenses) && parsed.extracted_expenses.length > 0) {
+    extractedExpenses = parsed.extracted_expenses
+      .filter((e) => e && e.amount != null && !isNaN(Number(e.amount)))
+      .map((e) => ({
+        amount: Number(e.amount),
+        currency: e.currency || "INR",
+        category: e.category || "General",
+        description: e.description || "Expense",
+        date: e.date || currentDate,
+      }));
+  } else if (parsed.extracted_expense && parsed.extracted_expense.amount != null) {
+    extractedExpenses.push({
+      amount: Number(parsed.extracted_expense.amount),
+      currency: parsed.extracted_expense.currency || "INR",
+      category: parsed.extracted_expense.category || "General",
+      description: parsed.extracted_expense.description || "Expense",
+      date: parsed.extracted_expense.date || currentDate,
+    });
+  }
+
   return {
     reply_to_user: parsed.reply_to_user || "I'm here to help you track your expenses!",
     user_state: parsed.user_state || userState,
@@ -249,17 +310,8 @@ Latest User Message / Button Click:
       Array.isArray(parsed.interactive_buttons) && parsed.interactive_buttons.length > 0
         ? parsed.interactive_buttons.slice(0, 3) // WhatsApp max 3 reply buttons
         : null,
-    extracted_expense: {
-      amount: parsed.extracted_expense?.amount ?? null,
-      currency:
-        parsed.extracted_expense?.currency ||
-        (parsed.extracted_expense?.amount ? "INR" : null),
-      category: parsed.extracted_expense?.category ?? null,
-      description: parsed.extracted_expense?.description ?? null,
-      date:
-        parsed.extracted_expense?.date ||
-        (parsed.extracted_expense?.amount ? currentDate : null),
-    },
+    extracted_expenses: extractedExpenses,
+    extracted_expense: extractedExpenses[0] || null, // legacy single-item backward compatibility
     extracted_preferences: {
       name: parsed.extracted_preferences?.name ?? null,
       monthly_budget: parsed.extracted_preferences?.monthly_budget ?? null,

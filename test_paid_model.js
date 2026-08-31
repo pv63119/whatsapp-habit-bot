@@ -30,7 +30,7 @@ async function runTest() {
     phoneNumber: "919876543210",
     name: "Karan",
     amount: 69,
-    planName: "HabitBot Monthly Membership",
+    planName: "Kharcha Monthly Membership",
   });
   console.log("💳 Payment Result:", payment);
 

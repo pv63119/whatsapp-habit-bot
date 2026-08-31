@@ -203,7 +203,7 @@ async function getMonthlyBudgetStats(phoneNumber, monthlyBudget) {
 
 // Root Health Check endpoint (for Keep-Alive pings like UptimeRobot / cron-job.org)
 app.get("/", (req, res) => {
-  res.status(200).send("🟢 Personal Finance WhatsApp Bot is healthy and running!");
+  res.status(200).send("🟢 Kharcha WhatsApp Bot is healthy and running!");
 });
 
 // 1. GET route: Meta webhook verification handshake
@@ -260,7 +260,7 @@ app.post("/webhook/razorpay", async (req, res) => {
 
         if (activatedUser) {
           const confirmationMsg =
-            `🎉 *Payment Successful! Welcome to HabitBot!*\n\n` +
+            `🎉 *Payment Successful! Welcome to Kharcha!*\n\n` +
             `Your ₹69 Monthly Membership is now active for 30 Days! 🚀\n\n` +
             `✨ *What you can do right now:*\n` +
             `• Log any spend (e.g. *150 coffee*, *Uber 320 to office*)\n` +
@@ -369,10 +369,10 @@ app.post("/webhook", async (req, res) => {
           phoneNumber: senderPhone,
           name: user.name || "Friend",
           amount: 69,
-          planName: "HabitBot Monthly Membership",
+          planName: "Kharcha Monthly Membership",
         });
         const payMsg =
-          `💳 *HabitBot Monthly Membership (₹69)*\n\n` +
+          `💳 *Kharcha Monthly Membership (₹69)*\n\n` +
           `Tap the link below to complete your ₹69 payment via UPI, Google Pay, PhonePe, Paytm, or Card:\n\n` +
           `👉 ${payment.paymentUrl}\n\n` +
           `_Your membership activates automatically as soon as payment is confirmed!_ 🎉`;
@@ -387,8 +387,8 @@ app.post("/webhook", async (req, res) => {
 
       if (!isOnboarding && !isUserSubscribed(user)) {
         const lockMsg =
-          `🔒 *HabitBot Membership Required (₹69/month)*\n\n` +
-          `HabitBot is a private, ad-free personal finance tracker. To log your expenses, scan receipt screenshots, and receive daily check-ins, please activate your membership below 👇`;
+          `🔒 *Kharcha Membership Required (₹69/month)*\n\n` +
+          `Kharcha is a private, ad-free personal finance tracker. To log your expenses, scan receipt screenshots, and receive daily check-ins, please activate your membership below 👇`;
         const lockButtons = [{ id: "pay_69_activate", title: "💳 Activate (₹69/mo)" }];
         await sendWhatsAppInteractiveButtons(senderPhone, lockMsg, lockButtons);
         return;
@@ -719,5 +719,5 @@ cron.schedule("0 11 * * *", async () => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Personal Finance Bot server is listening on port ${PORT} (Timezone: Asia/Kolkata)`);
+  console.log(`🚀 Kharcha server is listening on port ${PORT} (Timezone: Asia/Kolkata)`);
 });

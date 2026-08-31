@@ -21,7 +21,7 @@ function isUserSubscribed(user) {
 /**
  * Generate a dynamic Payment Link for the ₹69 Monthly Membership
  */
-async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, planName = "HabitBot Monthly Membership" }) {
+async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, planName = "Kharcha Monthly Membership" }) {
   // Option 1: Direct Razorpay Payment Page / Link configured in environment
   if (RAZORPAY_PAYMENT_LINK) {
     return {
@@ -42,7 +42,7 @@ async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, pl
           amount: amount * 100, // Amount in paise (6900 paise = ₹69)
           currency: "INR",
           accept_partial: false,
-          description: `HabitBot Membership: ₹69/month for ${name}`,
+          description: `Kharcha Membership: ₹69/month for ${name}`,
           customer: {
             name: name || "Member",
             contact: phoneNumber ? `+${phoneNumber.replace("+", "")}` : undefined,
@@ -79,10 +79,10 @@ async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, pl
 
   // Option 3: UPI ID link or fallback
   const upiId = PAYMENT_UPI_ID || "priyanshu@upi";
-  const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent("HabitBot")}&am=${amount}&cu=INR&tn=${encodeURIComponent("HabitBot Monthly")}`;
+  const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent("Kharcha")}&am=${amount}&cu=INR&tn=${encodeURIComponent("Kharcha Monthly")}`;
 
   return {
-    paymentUrl: RAZORPAY_PAYMENT_LINK || `https://rzp.io/l/habitbot-monthly`,
+    paymentUrl: RAZORPAY_PAYMENT_LINK || `https://rzp.io/l/kharcha-monthly`,
     upiUri: upiLink,
     amount,
     planName,

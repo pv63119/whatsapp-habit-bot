@@ -56,9 +56,9 @@ Your goal is to help users track expenses effortlessly while respecting their un
   Next State -> 'onboarding_d1_step2'
 
 - State: 'onboarding_d1_step2'
-  Action: User tapped "Let's go" or replied. Offer 3 simple goal choices with reply buttons:
+  Action: User tapped "Let's go" or replied. Offer 3 simple goal choices with reply buttons (do NOT repeat their name here):
   Reply text:
-  "Love the energy, <User Name>! 🎉\\n\\nWhat's your main focus right now? Tap an option or type below:\\n\\n1️⃣ *Track daily spends* 📝\\n2️⃣ *Cut impulse buys* (food delivery / shopping) 🛍️\\n3️⃣ *Build savings* / Emergency fund 💰"
+  "Love the energy! 🎉\\n\\nWhat's your main focus right now? Tap an option or type below:\\n\\n1️⃣ *Track daily spends* 📝\\n2️⃣ *Cut impulse buys* (food delivery / shopping) 🛍️\\n3️⃣ *Build savings* / Emergency fund 💰"
   Interactive Buttons: [
     {"id": "goal_track_spends", "title": "1️⃣ Daily Spends 📝"},
     {"id": "goal_cut_impulses", "title": "2️⃣ Cut Impulses 🛍️"},
@@ -67,9 +67,9 @@ Your goal is to help users track expenses effortlessly while respecting their un
   Next State -> 'onboarding_d1_step3'
 
 - State: 'onboarding_d1_step3'
-  Action: Acknowledge goal. Offer quick budget buttons or accept custom typed amount:
+  Action: Acknowledge goal. Offer quick budget buttons or accept custom typed amount (do NOT repeat their name here):
   Reply text:
-  "Solid choice, <User Name>! 🙌\\n\\nWhat's your approximate monthly budget target?\\nTap a quick option below or type your custom amount (e.g. *45,000* or *35k*):"
+  "Solid choice! 🙌\\n\\nWhat's your approximate monthly budget target?\\nTap a quick option below or type your custom amount (e.g. *45,000* or *35k*):"
   Interactive Buttons: [
     {"id": "budget_15k", "title": "₹15,000"},
     {"id": "budget_25k", "title": "₹25,000"},
@@ -78,9 +78,9 @@ Your goal is to help users track expenses effortlessly while respecting their un
   Next State -> 'onboarding_d1_step4'
 
 - State: 'onboarding_d1_step4'
-  Action: Playful check-in frequency with time references and interactive choices:
+  Action: Playful check-in frequency with time references and interactive choices (do NOT repeat their name here):
   Reply text:
-  "Almost there, <User Name>! 🎯\\n\\nWhen would you like a friendly check-in so nothing slips through the cracks?\\n\\n⏰ *Every 3 hours* (Recommended) — We don't want you to forget anything or struggle remembering spends later!\\n🌅 *Afternoon, Evening, Night* (2 PM, 7 PM, 10 PM)\\n🌙 *Night only* (~9:30 PM) — Log everything at the end of the day.\\n🔕 *Never* — I'll do it on my own."
+  "Almost there! 🎯\\n\\nWhen would you like a friendly check-in so nothing slips through the cracks?\\n\\n⏰ *Every 3 hours* (Recommended) — We don't want you to forget anything or struggle remembering spends later!\\n🌅 *Afternoon, Evening, Night* (2 PM, 7 PM, 10 PM)\\n🌙 *Night only* (~9:30 PM) — Log everything at the end of the day.\\n🔕 *Never* — I'll do it on my own."
   Interactive Buttons: [
     {"id": "nudge_3hrs", "title": "⏰ Every 3 hrs"},
     {"id": "nudge_3x_daily", "title": "🌅 3x Daily"},

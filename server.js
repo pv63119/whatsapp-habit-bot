@@ -9,6 +9,7 @@ const Expense = require("./models/Expense");
 const { processFinanceMessage, FIXED_CATEGORIES } = require("./services/aiService");
 const { getNudgeMessage } = require("./services/nudgeService");
 const {
+  isUserSubscribed,
   createPaymentLink,
   verifyRazorpaySignature,
   activateUserSubscription,
@@ -235,27 +236,24 @@ app.post("/webhook/razorpay", async (req, res) => {
       const phoneNumber =
         paymentEntity?.notes?.phoneNumber ||
         paymentEntity?.customer?.contact?.replace("+", "");
-      const planName = paymentEntity?.notes?.planName || "Pro Plan";
-      const amount = (paymentEntity?.amount || 9900) / 100;
-      const isAnnual = amount >= 700;
+      const amount = (paymentEntity?.amount || 6900) / 100;
 
       if (phoneNumber) {
         await activateUserSubscription(phoneNumber, {
           paymentId: paymentEntity.id,
           amount,
-          planName,
-          durationDays: isAnnual ? 365 : 30,
+          durationDays: 30,
         });
 
         const confirmationMsg =
-          `🎉 *Payment Successful! Welcome to HabitBot Pro!*\n\n` +
-          `Your *${planName}* is now active for ${isAnnual ? "1 Year" : "30 Days"}! 🚀\n\n` +
-          `✨ *Unlimited Features Unlocked:*\n` +
-          `• Instant AI bill & receipt scanning\n` +
-          `• Auto multi-item split categorization\n` +
-          `• Proactive budget pacing alerts\n` +
-          `• Priority support\n\n` +
-          `Thank you for supporting HabitBot! Let's conquer your financial goals together. 💪`;
+          `🎉 *Payment Successful! Welcome to HabitBot!*\n\n` +
+          `Your ₹69 Monthly Membership is now active for 30 Days! 🚀\n\n` +
+          `✨ *What you can do right now:*\n` +
+          `• Log any spend (e.g. *150 coffee*, *Uber 320 to office*)\n` +
+          `• Send a screenshot of any *Blinkit, Zepto, or Swiggy* bill\n` +
+          `• Type *stats* to view your monthly spend & 🟢🟡🔴 budget status\n` +
+          `• Type *edit budget* to adjust your target anytime\n\n` +
+          `Let's take full control of your finances together! 💪`;
 
         await sendWhatsAppMessage(phoneNumber, confirmationMsg);
       }
@@ -334,12 +332,51 @@ app.post("/webhook", async (req, res) => {
           phoneNumber: senderPhone,
           userState: "new_user",
           preferences: {},
+          subscription: { status: "unpaid" },
           conversationHistory: [],
         });
         await user.save();
       }
 
       const lowerText = incomingText.toLowerCase().trim();
+
+      // Quick Payment Link Triggers
+      if (
+        lowerText === "pay_69_activate" ||
+        lowerText === "💳 activate (₹69/mo)" ||
+        lowerText === "💳 renew (₹69/mo)" ||
+        lowerText === "pay" ||
+        lowerText === "subscribe" ||
+        lowerText === "membership"
+      ) {
+        const payment = await createPaymentLink({
+          phoneNumber: senderPhone,
+          name: user.name || "Friend",
+          amount: 69,
+          planName: "HabitBot Monthly Membership",
+        });
+        const payMsg =
+          `💳 *HabitBot Monthly Membership (₹69)*\n\n` +
+          `Tap the link below to complete your ₹69 payment via UPI, Google Pay, PhonePe, Paytm, or Card:\n\n` +
+          `👉 ${payment.paymentUrl}\n\n` +
+          `_Your membership activates automatically as soon as payment is confirmed!_ 🎉`;
+        await sendWhatsAppMessage(senderPhone, payMsg);
+        return;
+      }
+
+      // 🛑 PAYWALL CHECK: If user completed onboarding but hasn't paid, block spend logging & check-ins
+      const isOnboarding = ["new_user", "onboarding_name", "onboarding_budget", "onboarding_reminders"].includes(
+        user.userState
+      );
+
+      if (!isOnboarding && !isUserSubscribed(user)) {
+        const lockMsg =
+          `🔒 *HabitBot Membership Required (₹69/month)*\n\n` +
+          `HabitBot is a private, ad-free personal finance tracker. To log your expenses, scan receipt screenshots, and receive daily check-ins, please activate your membership below 👇`;
+        const lockButtons = [{ id: "pay_69_activate", title: "💳 Activate (₹69/mo)" }];
+        await sendWhatsAppInteractiveButtons(senderPhone, lockMsg, lockButtons);
+        return;
+      }
 
       // Quick Action Handler: 'stats' or 'summary'
       if (user.userState === "active_tracking" && (lowerText === "stats" || lowerText === "summary")) {
@@ -408,67 +445,6 @@ app.post("/webhook", async (req, res) => {
               : `💰 *Updated Total Spent:* ₹${stats.totalSpent.toLocaleString("en-IN")}`);
           await sendWhatsAppMessage(senderPhone, undoMsg);
         }
-        return;
-      }
-
-      // Quick Action Handler: 'upgrade', 'pricing', 'subscribe', 'pay', 'pro'
-      if (
-        user.userState === "active_tracking" &&
-        (lowerText === "upgrade" ||
-          lowerText === "pricing" ||
-          lowerText === "subscribe" ||
-          lowerText === "pay" ||
-          lowerText === "pro" ||
-          lowerText === "pro plan")
-      ) {
-        const pricingMsg =
-          `💎 *HabitBot Pro Plan*\n\n` +
-          `Unlock unlimited AI bill scanning, multi-item split categorization, and proactive budget pacing alerts!\n\n` +
-          `💰 *Special Launch Pricing:*\n` +
-          `• *Monthly:* ₹69 / month\n` +
-          `• *Annual (Save 28%):* ₹599 / year\n\n` +
-          `Tap below to generate your instant payment link:`;
-        const pricingButtons = [
-          { id: "pay_monthly_69", title: "💳 Pay ₹69 (Monthly)" },
-          { id: "pay_annual_599", title: "⭐ Pay ₹599 (Annual)" },
-        ];
-        await sendWhatsAppInteractiveButtons(senderPhone, pricingMsg, pricingButtons);
-        return;
-      }
-
-      // Quick Action Handler: 'pay_monthly_69' / '💳 pay ₹69 (monthly)'
-      if (lowerText === "pay_monthly_69" || lowerText === "💳 pay ₹69 (monthly)") {
-        const payment = await createPaymentLink({
-          phoneNumber: senderPhone,
-          name: user.name || "Friend",
-          amount: 69,
-          planName: "Pro Monthly Plan",
-        });
-        const payMsg =
-          `💳 *HabitBot Pro — Monthly Plan*\n\n` +
-          `Amount: *₹69*\n\n` +
-          `Tap the link below to complete payment via UPI, Google Pay, PhonePe, Paytm, or Card:\n\n` +
-          `👉 ${payment.paymentUrl}\n\n` +
-          `_Your Pro subscription activates automatically as soon as payment is confirmed!_ 🎉`;
-        await sendWhatsAppMessage(senderPhone, payMsg);
-        return;
-      }
-
-      // Quick Action Handler: 'pay_annual_599' / '⭐ pay ₹599 (annual)'
-      if (lowerText === "pay_annual_599" || lowerText === "⭐ pay ₹599 (annual)") {
-        const payment = await createPaymentLink({
-          phoneNumber: senderPhone,
-          name: user.name || "Friend",
-          amount: 599,
-          planName: "Pro Annual Plan",
-        });
-        const payMsg =
-          `⭐ *HabitBot Pro — Annual Plan (Best Value)*\n\n` +
-          `Amount: *₹599* (Save ₹229/year!)\n\n` +
-          `Tap the link below to complete payment via UPI, Google Pay, PhonePe, Paytm, or Card:\n\n` +
-          `👉 ${payment.paymentUrl}\n\n` +
-          `_Your Pro subscription activates automatically as soon as payment is confirmed!_ 🎉`;
-        await sendWhatsAppMessage(senderPhone, payMsg);
         return;
       }
 
@@ -581,8 +557,9 @@ app.post("/webhook", async (req, res) => {
 
       await user.save();
 
-      // 5. Save Expenses if extracted (support multi-item receipts & single items)
+      // 5. Save Expenses if extracted and user is subscribed
       if (
+        isUserSubscribed(user) &&
         !aiResult.needs_clarification &&
         aiResult.action !== "delete_last_expense"
       ) {
@@ -629,15 +606,18 @@ app.post("/webhook", async (req, res) => {
 // TIME-AWARE PROACTIVE SCHEDULERS (Asia/Kolkata / IST Time)
 // =========================================================
 
-// Helper to broadcast contextual nudges to specific frequency groups
+// Helper to broadcast contextual nudges to active paid subscribers
 async function broadcastNudge(filterRegex, timeSlot, frequencyType) {
   try {
+    const now = new Date();
     const users = await User.find({
       userState: "active_tracking",
+      "subscription.status": "active",
+      "subscription.validUntil": { $gt: now },
       "preferences.nudgeFrequency": { $regex: filterRegex },
     });
 
-    console.log(`⏰ Broadcasting [${timeSlot} / ${frequencyType}] nudge to ${users.length} user(s)...`);
+    console.log(`⏰ Broadcasting [${timeSlot} / ${frequencyType}] nudge to ${users.length} active subscriber(s)...`);
 
     for (let user of users) {
       const messageText = getNudgeMessage(frequencyType, timeSlot, new Date(), user.name);
@@ -702,6 +682,7 @@ cron.schedule("0 11 * * *", async () => {
 
     const eligibleUsers = await User.find({
       userState: "active_tracking",
+      "subscription.status": "active",
       createdAt: { $gte: fourDaysAgo, $lte: threeDaysAgo },
       "preferences.recurringBills": { $size: 0 },
     });

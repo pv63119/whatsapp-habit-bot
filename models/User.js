@@ -19,6 +19,7 @@ const userSchema = new mongoose.Schema(
         "onboarding_name",
         "onboarding_budget",
         "onboarding_reminders",
+        "awaiting_payment",
         "trigger_day_3_profiling",
         "active_tracking",
         "editing_name",
@@ -35,16 +36,8 @@ const userSchema = new mongoose.Schema(
     subscription: {
       status: {
         type: String,
-        enum: ["trial", "active", "expired"],
-        default: "trial",
-      },
-      plan: {
-        type: String,
-        default: "Pro Trial",
-      },
-      trialExpiresAt: {
-        type: Date,
-        default: () => new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days free trial
+        enum: ["unpaid", "active", "expired"],
+        default: "unpaid",
       },
       validUntil: {
         type: Date,

@@ -8,9 +8,19 @@ const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "habit_bo
 const DEFAULT_UPI_ID = process.env.PAYMENT_UPI_ID || "paytm.habitbot@icici"; // Fallback UPI ID for testing
 
 /**
- * Generate a dynamic Payment Link via Razorpay or Fallback UPI Link
+ * Check if a user currently has an active paid subscription
  */
-async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, planName = "Pro Monthly" }) {
+function isUserSubscribed(user) {
+  if (!user || !user.subscription) return false;
+  if (user.subscription.status !== "active") return false;
+  if (!user.subscription.validUntil) return false;
+  return new Date(user.subscription.validUntil) > new Date();
+}
+
+/**
+ * Generate a dynamic Payment Link for the ₹69 Monthly Membership
+ */
+async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, planName = "HabitBot Monthly Membership" }) {
   // If Razorpay API credentials are configured, create a live Razorpay Payment Link
   if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
     try {
@@ -18,12 +28,12 @@ async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, pl
       const response = await axios.post(
         "https://api.razorpay.com/v1/payment_links",
         {
-          amount: amount * 100, // Amount in paise
+          amount: amount * 100, // Amount in paise (6900 paise = ₹69)
           currency: "INR",
           accept_partial: false,
-          description: `Subscription: ${planName} for ${name}`,
+          description: `HabitBot Membership: ₹69/month for ${name}`,
           customer: {
-            name: name || "Customer",
+            name: name || "Member",
             contact: phoneNumber ? `+${phoneNumber.replace("+", "")}` : undefined,
           },
           notify: {
@@ -53,16 +63,16 @@ async function createPaymentLink({ phoneNumber, name = "Friend", amount = 69, pl
       };
     } catch (err) {
       console.error("❌ Razorpay API error:", err.response ? err.response.data : err.message);
-      // Fallback to UPI link on error
+      // Fallback to sandbox link on error
     }
   }
 
-  // Fallback / Sandbox UPI Link
-  const encodedName = encodeURIComponent("WhatsApp Habit Bot");
-  const upiLink = `upi://pay?pa=${DEFAULT_UPI_ID}&pn=${encodedName}&am=${amount}&cu=INR&tn=${encodeURIComponent(planName)}`;
+  // Sandbox / UPI Fallback Link
+  const encodedName = encodeURIComponent("HabitBot Membership");
+  const upiLink = `upi://pay?pa=${DEFAULT_UPI_ID}&pn=${encodedName}&am=${amount}&cu=INR&tn=${encodeURIComponent("HabitBot Monthly ₹69")}`;
 
   return {
-    paymentUrl: `https://rzp.io/i/test-demo-habitbot?amount=${amount}&phone=${phoneNumber}`,
+    paymentUrl: `https://rzp.io/i/habitbot-69?amount=${amount}&phone=${phoneNumber}`,
     upiUri: upiLink,
     amount,
     planName,
@@ -83,9 +93,9 @@ function verifyRazorpaySignature(body, signature) {
 }
 
 /**
- * Activate user subscription upon payment completion
+ * Activate user subscription upon payment completion (30 days access)
  */
-async function activateUserSubscription(phoneNumber, { paymentId, amount, planName = "Pro Monthly", durationDays = 30 }) {
+async function activateUserSubscription(phoneNumber, { paymentId, amount = 69, durationDays = 30 } = {}) {
   try {
     const user = await User.findOne({ phoneNumber });
     if (!user) return null;
@@ -95,13 +105,15 @@ async function activateUserSubscription(phoneNumber, { paymentId, amount, planNa
 
     user.subscription = {
       status: "active",
-      plan: planName,
       validUntil,
       lastPaymentId: paymentId || `pay_${Date.now()}`,
     };
 
+    // Unlock user into active tracking
+    user.userState = "active_tracking";
+
     await user.save();
-    console.log(`✅ Subscription activated for ${phoneNumber} (${planName}) until ${validUntil.toISOString()}`);
+    console.log(`✅ HabitBot Membership activated for ${phoneNumber} until ${validUntil.toISOString()}`);
     return user;
   } catch (err) {
     console.error("❌ Error activating user subscription:", err);
@@ -110,6 +122,7 @@ async function activateUserSubscription(phoneNumber, { paymentId, amount, planNa
 }
 
 module.exports = {
+  isUserSubscribed,
   createPaymentLink,
   verifyRazorpaySignature,
   activateUserSubscription,

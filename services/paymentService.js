@@ -105,10 +105,21 @@ function verifyRazorpaySignature(body, signature) {
 /**
  * Activate user subscription upon payment completion (30 days access)
  */
-async function activateUserSubscription(phoneNumber, { paymentId, amount = 69, durationDays = 30 } = {}) {
+async function activateUserSubscription(rawPhone, { paymentId, amount = 69, durationDays = 30 } = {}) {
   try {
-    const user = await User.findOne({ phoneNumber });
-    if (!user) return null;
+    if (!rawPhone) return null;
+    const digits = String(rawPhone).replace(/\D/g, "");
+    const last10 = digits.slice(-10);
+
+    // Find user matching exact phone or last 10 digits
+    let user = await User.findOne({
+      phoneNumber: { $regex: new RegExp(`${last10}$`) },
+    });
+
+    if (!user) {
+      console.warn(`⚠️ No user found matching phone ${rawPhone} (${last10}) for payment activation.`);
+      return null;
+    }
 
     const validUntil = new Date();
     validUntil.setDate(validUntil.getDate() + durationDays);
@@ -123,7 +134,7 @@ async function activateUserSubscription(phoneNumber, { paymentId, amount = 69, d
     user.userState = "active_tracking";
 
     await user.save();
-    console.log(`✅ HabitBot Membership activated for ${phoneNumber} until ${validUntil.toISOString()}`);
+    console.log(`✅ HabitBot Membership activated for ${user.phoneNumber} until ${validUntil.toISOString()}`);
     return user;
   } catch (err) {
     console.error("❌ Error activating user subscription:", err);

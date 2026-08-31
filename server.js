@@ -226,36 +226,52 @@ app.post("/webhook/razorpay", async (req, res) => {
     const signature = req.headers["x-razorpay-signature"];
     const event = req.body;
 
+    console.log("💳 Received Razorpay Webhook Event:", event?.event);
+
     if (signature && !verifyRazorpaySignature(req.body, signature)) {
       console.warn("⚠️ Invalid Razorpay webhook signature");
       return res.sendStatus(400);
     }
 
-    if (event.event === "payment_link.paid" || event.event === "payment.captured") {
-      const paymentEntity = event.payload?.payment?.entity || event.payload?.payment_link?.entity;
-      const phoneNumber =
+    if (
+      event.event === "payment_link.paid" ||
+      event.event === "payment.captured" ||
+      event.event === "order.paid"
+    ) {
+      const paymentEntity =
+        event.payload?.payment?.entity ||
+        event.payload?.payment_link?.entity ||
+        event.payload?.order?.entity;
+
+      const rawPhone =
         paymentEntity?.notes?.phoneNumber ||
-        paymentEntity?.customer?.contact?.replace("+", "");
+        paymentEntity?.customer?.contact ||
+        paymentEntity?.contact ||
+        "";
+
       const amount = (paymentEntity?.amount || 6900) / 100;
 
-      if (phoneNumber) {
-        await activateUserSubscription(phoneNumber, {
+      if (rawPhone) {
+        const activatedUser = await activateUserSubscription(rawPhone, {
           paymentId: paymentEntity.id,
           amount,
           durationDays: 30,
         });
 
-        const confirmationMsg =
-          `🎉 *Payment Successful! Welcome to HabitBot!*\n\n` +
-          `Your ₹69 Monthly Membership is now active for 30 Days! 🚀\n\n` +
-          `✨ *What you can do right now:*\n` +
-          `• Log any spend (e.g. *150 coffee*, *Uber 320 to office*)\n` +
-          `• Send a screenshot of any *Blinkit, Zepto, or Swiggy* bill\n` +
-          `• Type *stats* to view your monthly spend & 🟢🟡🔴 budget status\n` +
-          `• Type *edit budget* to adjust your target anytime\n\n` +
-          `Let's take full control of your finances together! 💪`;
+        if (activatedUser) {
+          const confirmationMsg =
+            `🎉 *Payment Successful! Welcome to HabitBot!*\n\n` +
+            `Your ₹69 Monthly Membership is now active for 30 Days! 🚀\n\n` +
+            `✨ *What you can do right now:*\n` +
+            `• Log any spend (e.g. *150 coffee*, *Uber 320 to office*)\n` +
+            `• Send a screenshot of any *Blinkit, Zepto, or Swiggy* bill\n` +
+            `• Type *stats* to view your monthly spend & 🟢🟡🔴 budget status\n` +
+            `• Type *edit budget* to adjust your target anytime\n\n` +
+            `Let's take full control of your finances together! 💪`;
 
-        await sendWhatsAppMessage(phoneNumber, confirmationMsg);
+          await sendWhatsAppMessage(activatedUser.phoneNumber, confirmationMsg);
+          console.log(`📩 Payment notification sent to ${activatedUser.phoneNumber}`);
+        }
       }
     }
 

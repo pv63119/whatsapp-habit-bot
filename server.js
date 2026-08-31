@@ -378,15 +378,15 @@ app.post("/webhook", async (req, res) => {
 // =========================================================
 
 // Helper to broadcast contextual nudges to specific frequency groups
-async function broadcastNudge(filterRegex, timeSlot) {
+async function broadcastNudge(filterRegex, timeSlot, frequencyType) {
   try {
     const users = await User.find({
       userState: "active_tracking",
       "preferences.nudgeFrequency": { $regex: filterRegex },
     });
 
-    const messageText = getNudgeMessage(timeSlot);
-    console.log(`⏰ Broadcasting [${timeSlot}] nudge to ${users.length} user(s)...`);
+    const messageText = getNudgeMessage(frequencyType, timeSlot);
+    console.log(`⏰ Broadcasting [${timeSlot} / ${frequencyType}] nudge to ${users.length} user(s)...`);
 
     for (let user of users) {
       await sendWhatsAppMessage(user.phoneNumber, messageText);
@@ -397,42 +397,45 @@ async function broadcastNudge(filterRegex, timeSlot) {
 }
 
 // 1. 12:00 PM IST (Mid-day / Lunch Prep) -> 3-Hour Nudge
-cron.schedule("0 12 * * *", () => broadcastNudge(/3|hour/i, "12PM"), {
+cron.schedule("0 12 * * *", () => broadcastNudge(/3|hour/i, "12PM", "3hr"), {
   timezone: "Asia/Kolkata",
 });
 
 // 2. 3:00 PM IST (Post-Lunch Slump) -> 3-Hour & 3x Daily Nudges
-cron.schedule("0 15 * * *", () => broadcastNudge(/3|hour|3x|afternoon|day/i, "3PM"), {
+cron.schedule("0 15 * * *", () => {
+  broadcastNudge(/3|hour/i, "3PM", "3hr");
+  broadcastNudge(/3x|afternoon|day/i, "3PM", "3x");
+}, {
   timezone: "Asia/Kolkata",
 });
 
 // 3. 6:00 PM IST (Evening Chai & Commute) -> 3-Hour Nudge
-cron.schedule("0 18 * * *", () => broadcastNudge(/3|hour/i, "6PM"), {
+cron.schedule("0 18 * * *", () => broadcastNudge(/3|hour/i, "6PM", "3hr"), {
   timezone: "Asia/Kolkata",
 });
 
 // 4. 7:00 PM IST (Evening Rush) -> 3x Daily Nudge
-cron.schedule("0 19 * * *", () => broadcastNudge(/3x|afternoon|day/i, "7PM"), {
+cron.schedule("0 19 * * *", () => broadcastNudge(/3x|afternoon|day/i, "7PM", "3x"), {
   timezone: "Asia/Kolkata",
 });
 
 // 5. 9:00 PM IST (Dinner & Groceries) -> 3-Hour Nudge
-cron.schedule("0 21 * * *", () => broadcastNudge(/3|hour/i, "9PM"), {
+cron.schedule("0 21 * * *", () => broadcastNudge(/3|hour/i, "9PM", "3hr"), {
   timezone: "Asia/Kolkata",
 });
 
 // 6. 10:30 PM IST (Night Only Wrap) -> Night Only Nudge
-cron.schedule("30 22 * * *", () => broadcastNudge(/night/i, "10:30PM"), {
+cron.schedule("30 22 * * *", () => broadcastNudge(/night/i, "10:30PM", "night_only"), {
   timezone: "Asia/Kolkata",
 });
 
 // 7. 11:00 PM IST (Post-Dinner Daily Wrap) -> 3x Daily Nudge
-cron.schedule("0 23 * * *", () => broadcastNudge(/3x|afternoon|day/i, "11PM"), {
+cron.schedule("0 23 * * *", () => broadcastNudge(/3x|afternoon|day/i, "11PM", "3x"), {
   timezone: "Asia/Kolkata",
 });
 
 // 8. 12:00 AM Midnight IST (Midnight Bedtime Wrap) -> 3-Hour Nudge
-cron.schedule("0 0 * * *", () => broadcastNudge(/3|hour/i, "12AM"), {
+cron.schedule("0 0 * * *", () => broadcastNudge(/3|hour/i, "12AM", "3hr"), {
   timezone: "Asia/Kolkata",
 });
 

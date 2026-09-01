@@ -201,9 +201,12 @@ async function getMonthlyBudgetStats(phoneNumber, monthlyBudget) {
   };
 }
 
-// Root Health Check endpoint (for Keep-Alive pings like UptimeRobot / cron-job.org)
+// Root Health Check endpoint (Ultra-lightweight 2-byte response for cron-job.org & monitors)
 app.get("/", (req, res) => {
-  res.status(200).send("🟢 Kharcha WhatsApp Bot is healthy and running!");
+  res.status(200).type("text/plain").send("OK");
+});
+app.head("/", (req, res) => {
+  res.status(200).end();
 });
 
 // 1. GET route: Meta webhook verification handshake

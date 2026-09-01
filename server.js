@@ -618,9 +618,64 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// =========================================================
-// TIME-AWARE PROACTIVE SCHEDULERS (Asia/Kolkata / IST Time)
-// =========================================================
+// HTTP Trigger for External Schedulers (cron-job.org / Keep-Alive)
+app.get("/cron/nudge", async (req, res) => {
+  try {
+    const now = new Date();
+    const istTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
+    const istHour = parseInt(istTimeStr.split(":")[0], 10);
+
+    let triggeredSlots = [];
+
+    // Specific slot override via query param ?slot=9PM or ?type=3hr
+    const customSlot = req.query.slot;
+    const customType = req.query.type;
+    if (customSlot && customType) {
+      await broadcastNudge(customType === "night_only" ? /night/i : (customType === "3x" ? /3x|afternoon|day/i : /3|hour/i), customSlot, customType);
+      triggeredSlots.push(`${customSlot} (${customType})`);
+    } else {
+      // Automatic time-slot detection based on IST Hour
+      if (istHour >= 12 && istHour < 15) {
+        await broadcastNudge(/3|hour/i, "12PM", "3hr");
+        triggeredSlots.push("12PM 3hr");
+      } else if (istHour >= 15 && istHour < 18) {
+        await broadcastNudge(/3|hour/i, "3PM", "3hr");
+        await broadcastNudge(/3x|afternoon|day/i, "3PM", "3x");
+        triggeredSlots.push("3PM 3hr", "3PM 3x");
+      } else if (istHour >= 18 && istHour < 19) {
+        await broadcastNudge(/3|hour/i, "6PM", "3hr");
+        triggeredSlots.push("6PM 3hr");
+      } else if (istHour >= 19 && istHour < 21) {
+        await broadcastNudge(/3x|afternoon|day/i, "7PM", "3x");
+        triggeredSlots.push("7PM 3x");
+      } else if (istHour >= 21 && istHour < 22) {
+        await broadcastNudge(/3|hour/i, "9PM", "3hr");
+        triggeredSlots.push("9PM 3hr");
+      } else if (istHour === 22) {
+        await broadcastNudge(/night/i, "10:30PM", "night_only");
+        triggeredSlots.push("10:30PM night_only");
+      } else if (istHour === 23) {
+        await broadcastNudge(/3x|afternoon|day/i, "11PM", "3x");
+        triggeredSlots.push("11PM 3x");
+      } else if (istHour === 0 || istHour === 24) {
+        await broadcastNudge(/3|hour/i, "12AM", "3hr");
+        triggeredSlots.push("12AM 3hr");
+      } else {
+        await broadcastNudge(/3|hour/i, "12PM", "3hr");
+        triggeredSlots.push("General Day Nudge");
+      }
+    }
+
+    res.status(200).json({
+      status: "success",
+      istTime: istTimeStr,
+      triggeredSlots,
+    });
+  } catch (err) {
+    console.error("❌ Error in /cron/nudge endpoint:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Helper to broadcast contextual nudges to active paid subscribers
 async function broadcastNudge(filterRegex, timeSlot, frequencyType) {

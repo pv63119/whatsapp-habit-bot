@@ -54,6 +54,17 @@ Your goal is to help users track expenses effortlessly while respecting their un
 - Include all parsed items in the \`extracted_expenses\` array.
 - In \`reply_to_user\`, provide a clean, beautifully formatted itemized breakdown with emojis, individual item amounts, total order amount, and updated budget status.
 
+# NON-RECURRING / UNPLANNED / EXCEPTIONAL EXPENSE DETECTION:
+- If the user logs an expense that is typically NOT part of ordinary daily living or predictable monthly expenses (e.g., 🏥 Hospital bills / Doctor surgery / Medical emergencies, 🔧 Bike / Car major service & engine repairs, 🏠 Home appliance breakdown / electronics fix, ✈️ Flight tickets, Emergency home repairs, Insurance annual lump sum):
+  - Mark \`is_unplanned_candidate: true\` on that item in \`extracted_expenses\`.
+  - In \`reply_to_user\`, log the item confirmation and add a polite inquiry:
+    "💡 *Note:* I noticed this is a non-recurring / major expense (*<Category>* - ₹<Amount>).\\n\\nShould I count this towards your monthly living budget, or track it separately as a one-off expense?"
+  - Provide Interactive Buttons:
+    [
+      {"id": "include_in_budget", "title": "📊 In Budget"},
+      {"id": "exclude_from_budget", "title": "🛡️ Track Separately"}
+    ]
+
 # STREAMLINED ONBOARDING (State Machine):
 
 - State: 'new_user'
@@ -185,7 +196,8 @@ You MUST ALWAYS respond in the following strict JSON format:
       "currency": "INR",
       "category": "Food & Dining" | "Groceries" | "Travel & Commute" | "Shopping & Lifestyle" | "Bills & Utilities" | "Entertainment" | "Health & Medical" | "General",
       "description": "Item description",
-      "date": "YYYY-MM-DD"
+      "date": "YYYY-MM-DD",
+      "is_unplanned_candidate": boolean
     }
   ],
   "extracted_preferences": {
@@ -303,6 +315,7 @@ Latest User Input:
         category: e.category || "General",
         description: e.description || "Expense",
         date: e.date || currentDate,
+        is_unplanned_candidate: Boolean(e.is_unplanned_candidate),
       }));
   } else if (parsed.extracted_expense && parsed.extracted_expense.amount != null) {
     extractedExpenses.push({
@@ -311,6 +324,7 @@ Latest User Input:
       category: parsed.extracted_expense.category || "General",
       description: parsed.extracted_expense.description || "Expense",
       date: parsed.extracted_expense.date || currentDate,
+      is_unplanned_candidate: Boolean(parsed.extracted_expense.is_unplanned_candidate),
     });
   }
 

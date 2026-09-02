@@ -161,20 +161,32 @@ async function downloadWhatsAppMedia(mediaId) {
   }
 }
 
-// Helper: Calculate monthly budget stats with Traffic-Light indicators
+// Helper: Calculate monthly budget stats (Separating Living Budget vs One-Off Exceptional Spends)
 async function getMonthlyBudgetStats(phoneNumber, monthlyBudget) {
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
-  const expenses = await Expense.find({
+  // Living expenses counted towards monthly budget
+  const livingExpenses = await Expense.find({
     phoneNumber,
     createdAt: { $gte: startOfMonth },
+    isExcludedFromBudget: { $ne: true },
   });
 
-  const totalSpent = expenses.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  // Separate one-off expenses (e.g., hospital bill, major bike service)
+  const oneOffExpenses = await Expense.find({
+    phoneNumber,
+    createdAt: { $gte: startOfMonth },
+    isExcludedFromBudget: true,
+  });
+
+  const livingSpent = livingExpenses.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  const oneOffSpent = oneOffExpenses.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  const totalSpent = livingSpent + oneOffSpent;
+
   const budget = monthlyBudget || 0;
-  const remaining = budget > 0 ? budget - totalSpent : 0;
+  const remaining = budget > 0 ? budget - livingSpent : 0;
   const remainingPercent = budget > 0 ? (remaining / budget) * 100 : 100;
 
   let statusEmoji = "🟢";
@@ -191,13 +203,16 @@ async function getMonthlyBudgetStats(phoneNumber, monthlyBudget) {
 
   return {
     totalSpent,
+    livingSpent,
+    oneOffSpent,
     monthlyBudget: budget,
     remaining,
     remainingPercent: Math.max(0, Math.round(remainingPercent)),
     statusEmoji,
     statusText,
-    count: expenses.length,
-    expenses,
+    count: livingExpenses.length,
+    expenses: livingExpenses,
+    oneOffExpenses,
   };
 }
 
@@ -397,6 +412,84 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
+      // Quick Action Handler: Exclude from Budget (Non-recurring / One-off spend separation)
+      if (
+        lowerText === "exclude_from_budget" ||
+        lowerText === "🛡️ track separately" ||
+        lowerText === "track separately" ||
+        lowerText === "exclude"
+      ) {
+        const lastExpense = await Expense.findOne({ phoneNumber: senderPhone }).sort({ createdAt: -1 });
+        if (lastExpense) {
+          lastExpense.isExcludedFromBudget = true;
+          await lastExpense.save();
+          const stats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
+          const confirmMsg =
+            `🛡️ *Tracked as Separate One-Off Spend!*\n\n` +
+            `*${lastExpense.description}* (₹${lastExpense.amount.toLocaleString("en-IN")}) is excluded from your monthly living budget.\n\n` +
+            `🟢 *Your Living Budget Status:*\n` +
+            `• Living Spent: ₹${stats.livingSpent.toLocaleString("en-IN")}\n` +
+            (stats.monthlyBudget > 0
+              ? `• ${stats.statusEmoji} Remaining Budget: ₹${stats.remaining.toLocaleString("en-IN")} (${stats.remainingPercent}%)\n`
+              : "") +
+            `• Separate One-Off Total: ₹${stats.oneOffSpent.toLocaleString("en-IN")}`;
+          await sendWhatsAppMessage(senderPhone, confirmMsg);
+          return;
+        }
+      }
+
+      // Quick Action Handler: Include in Budget
+      if (
+        lowerText === "include_in_budget" ||
+        lowerText === "📊 in budget" ||
+        lowerText === "in budget" ||
+        lowerText === "include in budget"
+      ) {
+        const lastExpense = await Expense.findOne({ phoneNumber: senderPhone }).sort({ createdAt: -1 });
+        if (lastExpense) {
+          lastExpense.isExcludedFromBudget = false;
+          await lastExpense.save();
+          const stats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
+          const confirmMsg =
+            `📊 *Included in Monthly Budget!*\n\n` +
+            `*${lastExpense.description}* (₹${lastExpense.amount.toLocaleString("en-IN")}) is counted towards your ₹${stats.monthlyBudget.toLocaleString("en-IN")} budget.\n\n` +
+            (stats.monthlyBudget > 0
+              ? `${stats.statusEmoji} *Remaining Budget:* ₹${stats.remaining.toLocaleString("en-IN")} (${stats.remainingPercent}%)`
+              : `💰 *Living Spent:* ₹${stats.livingSpent.toLocaleString("en-IN")}`);
+          await sendWhatsAppMessage(senderPhone, confirmMsg);
+          return;
+        }
+      }
+
+      // Quick Action Handler: Keep Previous Budget for New Month Clean Reset
+      if (
+        lowerText.startsWith("keep_budget") ||
+        lowerText.includes("keep ₹") ||
+        lowerText === "keep budget"
+      ) {
+        const budget = user.preferences.monthlyBudget || 15000;
+        const confirmMsg =
+          `🎉 *Budget Confirmed for the New Month!*\n\n` +
+          `Your monthly budget is set to *₹${budget.toLocaleString("en-IN")}*.\n\n` +
+          `All expenses from today start fresh from ₹0. Let's make this month great! 🚀`;
+        await sendWhatsAppMessage(senderPhone, confirmMsg);
+        return;
+      }
+
+      // Quick Action Handler: Set New Budget for New Month
+      if (lowerText === "set_new_budget" || lowerText === "✏️ set new budget") {
+        user.userState = "editing_budget";
+        await user.save();
+        const budgetMsg = "Sure! What should your budget target be for this new month? Tap below or type your amount:";
+        const budgetButtons = [
+          { id: "budget_15k", title: "₹15,000" },
+          { id: "budget_25k", title: "₹25,000" },
+          { id: "budget_40k", title: "₹40,000" },
+        ];
+        await sendWhatsAppInteractiveButtons(senderPhone, budgetMsg, budgetButtons);
+        return;
+      }
+
       // Quick Action Handler: 'stats' or 'summary'
       if (user.userState === "active_tracking" && (lowerText === "stats" || lowerText === "summary")) {
         const stats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
@@ -410,16 +503,25 @@ app.post("/webhook", async (req, res) => {
           .map(([cat, amt]) => `${CATEGORY_EMOJI_MAP[cat] || "📦"} *${cat}:* ₹${amt.toLocaleString("en-IN")}`)
           .join("\n");
 
-        if (!categoryBreakdown) categoryBreakdown = "No expenses logged this month yet!";
+        if (!categoryBreakdown) categoryBreakdown = "No living expenses logged this month yet!";
+
+        let oneOffSummary = "";
+        if (stats.oneOffExpenses && stats.oneOffExpenses.length > 0) {
+          const oneOffList = stats.oneOffExpenses
+            .map((e) => `• ${e.description} (₹${e.amount.toLocaleString("en-IN")})`)
+            .join("\n");
+          oneOffSummary = `\n\n🛡️ *Separate One-Off Spends:* ₹${stats.oneOffSpent.toLocaleString("en-IN")}\n${oneOffList}`;
+        }
 
         const statsMessage =
           `📊 *Monthly Spend Summary*\n\n` +
-          `💰 *Total Spent:* ₹${stats.totalSpent.toLocaleString("en-IN")}\n` +
+          `💰 *Living Spent:* ₹${stats.livingSpent.toLocaleString("en-IN")}\n` +
           (stats.monthlyBudget > 0
-            ? `🎯 *Budget:* ₹${stats.monthlyBudget.toLocaleString("en-IN")}\n` +
+            ? `🎯 *Budget Target:* ₹${stats.monthlyBudget.toLocaleString("en-IN")}\n` +
               `${stats.statusEmoji} *Remaining:* ₹${stats.remaining.toLocaleString("en-IN")} (${stats.remainingPercent}%)\n` +
-              `*Status:* ${stats.statusText}\n\n`
-            : "\n") +
+              `*Status:* ${stats.statusText}`
+            : "") +
+          `${oneOffSummary}\n\n` +
           `🏷️ *Category Breakdown:*\n${categoryBreakdown}\n\n` +
           `💡 _Tip: Just text me any spend to add to your stats!_`;
 
@@ -437,7 +539,7 @@ app.post("/webhook", async (req, res) => {
           await sendWhatsAppMessage(senderPhone, "📝 No expenses logged yet! Text me something like '150 coffee' to start.");
         } else {
           const historyList = recentExpenses
-            .map((e) => `${CATEGORY_EMOJI_MAP[e.category] || "📦"} *₹${e.amount}* - ${e.description} _(${e.date})_`)
+            .map((e) => `${CATEGORY_EMOJI_MAP[e.category] || "📦"} *₹${e.amount}* - ${e.description} ${e.isExcludedFromBudget ? "_[One-Off]_" : ""} _(${e.date})_`)
             .join("\n");
 
           await sendWhatsAppMessage(senderPhone, `📜 *Last 5 Transactions:*\n\n${historyList}`);
@@ -461,7 +563,7 @@ app.post("/webhook", async (req, res) => {
             `${CATEGORY_EMOJI_MAP[lastExpense.category] || "📦"} *₹${lastExpense.amount}* - ${lastExpense.description}\n\n` +
             (stats.monthlyBudget > 0
               ? `${stats.statusEmoji} *Updated Remaining Budget:* ₹${stats.remaining.toLocaleString("en-IN")}`
-              : `💰 *Updated Total Spent:* ₹${stats.totalSpent.toLocaleString("en-IN")}`);
+              : `💰 *Updated Living Spent:* ₹${stats.livingSpent.toLocaleString("en-IN")}`);
           await sendWhatsAppMessage(senderPhone, undoMsg);
         }
         return;
@@ -530,7 +632,7 @@ app.post("/webhook", async (req, res) => {
         preferences: user.preferences,
         recentHistory: user.conversationHistory.slice(-6),
         budgetStats: {
-          spentThisMonth: currentStats.totalSpent,
+          spentThisMonth: currentStats.livingSpent,
           monthlyBudget: currentStats.monthlyBudget,
           remainingBudget: currentStats.remaining,
           statusIndicator: currentStats.statusEmoji,
@@ -598,9 +700,11 @@ app.post("/webhook", async (req, res) => {
               description: exp.description || incomingText,
               date: exp.date || new Date().toISOString().split("T")[0],
               rawMessage: incomingText,
+              isUnplannedCandidate: Boolean(exp.is_unplanned_candidate),
+              isExcludedFromBudget: false,
             });
             await newExpense.save();
-            console.log(`💰 Expense recorded for ${senderPhone}: ₹${newExpense.amount} (${category} - ${newExpense.description})`);
+            console.log(`💰 Expense recorded for ${senderPhone}: ₹${newExpense.amount} (${category} - ${newExpense.description}) [Unplanned: ${newExpense.isUnplannedCandidate}]`);
           }
         }
       }
@@ -621,7 +725,152 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// HTTP Trigger for External Schedulers (cron-job.org / Keep-Alive)
+// =========================================================
+// TIME-AWARE PROACTIVE SCHEDULERS & CLEAN MONTHLY RESET
+// =========================================================
+
+// Helper to broadcast 1st of month clean-slate reset prompt
+async function broadcastMonthlyReset() {
+  try {
+    const now = new Date();
+    const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const users = await User.find({
+      userState: "active_tracking",
+      "subscription.status": "active",
+      "subscription.validUntil": { $gt: now },
+      "preferences.lastMonthlyResetPrompt": { $ne: currentYearMonth },
+    });
+
+    console.log(`🌅 Broadcasting 1st of month clean reset prompt to ${users.length} active subscriber(s)...`);
+
+    for (let user of users) {
+      const budget = user.preferences.monthlyBudget || 15000;
+      const nameGreeting = user.name ? ` ${user.name}` : "";
+      const resetMsg =
+        `🌅 *Happy 1st of the Month${nameGreeting}!* 🗓️\n\n` +
+        `Your spending has reset for the new month with a clean slate (₹0 spent)! 🚀\n\n` +
+        `💰 *Default Monthly Budget:* ₹${budget.toLocaleString("en-IN")}\n\n` +
+        `You are all set to continue with *₹${budget.toLocaleString("en-IN")}*. Would you like to keep this or set a different budget for this month?`;
+
+      const resetButtons = [
+        { id: `keep_budget_${budget}`, title: `🟢 Keep ₹${budget.toLocaleString("en-IN")}`.substring(0, 20) },
+        { id: "set_new_budget", title: "✏️ Set New Budget" },
+      ];
+
+      await sendWhatsAppInteractiveButtons(user.phoneNumber, resetMsg, resetButtons);
+
+      // Update user record to mark prompt sent for this month
+      user.preferences.lastMonthlyResetPrompt = currentYearMonth;
+      await user.save();
+    }
+  } catch (err) {
+    console.error("Error broadcasting monthly reset:", err);
+  }
+}
+
+// Helper to broadcast contextual nudges to active paid subscribers
+async function broadcastNudge(filterRegex, timeSlot, frequencyType) {
+  try {
+    const now = new Date();
+    const users = await User.find({
+      userState: "active_tracking",
+      "subscription.status": "active",
+      "subscription.validUntil": { $gt: now },
+      "preferences.nudgeFrequency": { $regex: filterRegex },
+    });
+
+    console.log(`⏰ Broadcasting [${timeSlot} / ${frequencyType}] nudge to ${users.length} active subscriber(s)...`);
+
+    for (let user of users) {
+      const messageText = getNudgeMessage(frequencyType, timeSlot, new Date(), user.name);
+      await sendWhatsAppMessage(user.phoneNumber, messageText);
+    }
+  } catch (err) {
+    console.error(`Error broadcasting ${timeSlot} nudge:`, err);
+  }
+}
+
+// 1. 1st of Every Month at 9:00 AM IST -> Clean-Slate Monthly Budget Reset
+cron.schedule("0 9 1 * *", broadcastMonthlyReset, {
+  timezone: "Asia/Kolkata",
+});
+
+// 2. 12:00 PM IST (Mid-day / Lunch Prep) -> 3-Hour Nudge
+cron.schedule("0 12 * * *", () => broadcastNudge(/3|hour/i, "12PM", "3hr"), {
+  timezone: "Asia/Kolkata",
+});
+
+// 3. 3:00 PM IST (Post-Lunch Slump) -> 3-Hour & 3x Daily Nudges
+cron.schedule("0 15 * * *", () => {
+  broadcastNudge(/3|hour/i, "3PM", "3hr");
+  broadcastNudge(/3x|afternoon|day/i, "3PM", "3x");
+}, {
+  timezone: "Asia/Kolkata",
+});
+
+// 4. 6:00 PM IST (Evening Chai & Commute) -> 3-Hour Nudge
+cron.schedule("0 18 * * *", () => broadcastNudge(/3|hour/i, "6PM", "3hr"), {
+  timezone: "Asia/Kolkata",
+});
+
+// 5. 7:00 PM IST (Evening Rush) -> 3x Daily Nudge
+cron.schedule("0 19 * * *", () => broadcastNudge(/3x|afternoon|day/i, "7PM", "3x"), {
+  timezone: "Asia/Kolkata",
+});
+
+// 6. 9:00 PM IST (Dinner & Groceries) -> 3-Hour Nudge
+cron.schedule("0 21 * * *", () => broadcastNudge(/3|hour/i, "9PM", "3hr"), {
+  timezone: "Asia/Kolkata",
+});
+
+// 7. 10:30 PM IST (Night Only Wrap) -> Night Only Nudge
+cron.schedule("30 22 * * *", () => broadcastNudge(/night/i, "10:30PM", "night_only"), {
+  timezone: "Asia/Kolkata",
+});
+
+// 8. 11:00 PM IST (Post-Dinner Daily Wrap) -> 3x Daily Nudge
+cron.schedule("0 23 * * *", () => broadcastNudge(/3x|afternoon|day/i, "11PM", "3x"), {
+  timezone: "Asia/Kolkata",
+});
+
+// 9. 12:00 AM Midnight IST (Midnight Bedtime Wrap) -> 3-Hour Nudge
+cron.schedule("0 0 * * *", () => broadcastNudge(/3|hour/i, "12AM", "3hr"), {
+  timezone: "Asia/Kolkata",
+});
+
+// 10. Day 3 Profiling check (11:00 AM IST)
+cron.schedule("0 11 * * *", async () => {
+  try {
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+    const fourDaysAgo = new Date();
+    fourDaysAgo.setDate(fourDaysAgo.getDate() - 4);
+
+    const eligibleUsers = await User.find({
+      userState: "active_tracking",
+      "subscription.status": "active",
+      createdAt: { $gte: fourDaysAgo, $lte: threeDaysAgo },
+      "preferences.recurringBills": { $size: 0 },
+    });
+
+    for (let user of eligibleUsers) {
+      user.userState = "trigger_day_3_profiling";
+      await user.save();
+
+      const day3Message =
+        "By the way! 👋 Do you have a recurring rent payment or EMI you'd like me to remind you about on a specific date?";
+      await sendWhatsAppMessage(user.phoneNumber, day3Message);
+    }
+  } catch (err) {
+    console.error("Error in Day 3 Profiling cron:", err);
+  }
+}, {
+  timezone: "Asia/Kolkata",
+});
+
+// HTTP Trigger for External Schedulers & Nudges (cron-job.org)
 app.get("/cron/nudge", async (req, res) => {
   try {
     const now = new Date();
@@ -630,14 +879,12 @@ app.get("/cron/nudge", async (req, res) => {
 
     let triggeredSlots = [];
 
-    // Specific slot override via query param ?slot=9PM or ?type=3hr
     const customSlot = req.query.slot;
     const customType = req.query.type;
     if (customSlot && customType) {
       await broadcastNudge(customType === "night_only" ? /night/i : (customType === "3x" ? /3x|afternoon|day/i : /3|hour/i), customSlot, customType);
       triggeredSlots.push(`${customSlot} (${customType})`);
     } else {
-      // Automatic time-slot detection based on IST Hour
       if (istHour >= 12 && istHour < 15) {
         await broadcastNudge(/3|hour/i, "12PM", "3hr");
         triggeredSlots.push("12PM 3hr");
@@ -680,100 +927,15 @@ app.get("/cron/nudge", async (req, res) => {
   }
 });
 
-// Helper to broadcast contextual nudges to active paid subscribers
-async function broadcastNudge(filterRegex, timeSlot, frequencyType) {
+// HTTP Trigger for Monthly Reset Testing
+app.get("/cron/monthly-reset", async (req, res) => {
   try {
-    const now = new Date();
-    const users = await User.find({
-      userState: "active_tracking",
-      "subscription.status": "active",
-      "subscription.validUntil": { $gt: now },
-      "preferences.nudgeFrequency": { $regex: filterRegex },
-    });
-
-    console.log(`⏰ Broadcasting [${timeSlot} / ${frequencyType}] nudge to ${users.length} active subscriber(s)...`);
-
-    for (let user of users) {
-      const messageText = getNudgeMessage(frequencyType, timeSlot, new Date(), user.name);
-      await sendWhatsAppMessage(user.phoneNumber, messageText);
-    }
+    await broadcastMonthlyReset();
+    res.status(200).json({ status: "success", message: "Monthly reset broadcast executed" });
   } catch (err) {
-    console.error(`Error broadcasting ${timeSlot} nudge:`, err);
+    console.error("❌ Error in /cron/monthly-reset:", err);
+    res.status(500).json({ error: err.message });
   }
-}
-
-// 1. 12:00 PM IST (Mid-day / Lunch Prep) -> 3-Hour Nudge
-cron.schedule("0 12 * * *", () => broadcastNudge(/3|hour/i, "12PM", "3hr"), {
-  timezone: "Asia/Kolkata",
-});
-
-// 2. 3:00 PM IST (Post-Lunch Slump) -> 3-Hour & 3x Daily Nudges
-cron.schedule("0 15 * * *", () => {
-  broadcastNudge(/3|hour/i, "3PM", "3hr");
-  broadcastNudge(/3x|afternoon|day/i, "3PM", "3x");
-}, {
-  timezone: "Asia/Kolkata",
-});
-
-// 3. 6:00 PM IST (Evening Chai & Commute) -> 3-Hour Nudge
-cron.schedule("0 18 * * *", () => broadcastNudge(/3|hour/i, "6PM", "3hr"), {
-  timezone: "Asia/Kolkata",
-});
-
-// 4. 7:00 PM IST (Evening Rush) -> 3x Daily Nudge
-cron.schedule("0 19 * * *", () => broadcastNudge(/3x|afternoon|day/i, "7PM", "3x"), {
-  timezone: "Asia/Kolkata",
-});
-
-// 5. 9:00 PM IST (Dinner & Groceries) -> 3-Hour Nudge
-cron.schedule("0 21 * * *", () => broadcastNudge(/3|hour/i, "9PM", "3hr"), {
-  timezone: "Asia/Kolkata",
-});
-
-// 6. 10:30 PM IST (Night Only Wrap) -> Night Only Nudge
-cron.schedule("30 22 * * *", () => broadcastNudge(/night/i, "10:30PM", "night_only"), {
-  timezone: "Asia/Kolkata",
-});
-
-// 7. 11:00 PM IST (Post-Dinner Daily Wrap) -> 3x Daily Nudge
-cron.schedule("0 23 * * *", () => broadcastNudge(/3x|afternoon|day/i, "11PM", "3x"), {
-  timezone: "Asia/Kolkata",
-});
-
-// 8. 12:00 AM Midnight IST (Midnight Bedtime Wrap) -> 3-Hour Nudge
-cron.schedule("0 0 * * *", () => broadcastNudge(/3|hour/i, "12AM", "3hr"), {
-  timezone: "Asia/Kolkata",
-});
-
-// 9. Day 3 Profiling check (11:00 AM IST)
-cron.schedule("0 11 * * *", async () => {
-  try {
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-
-    const fourDaysAgo = new Date();
-    fourDaysAgo.setDate(fourDaysAgo.getDate() - 4);
-
-    const eligibleUsers = await User.find({
-      userState: "active_tracking",
-      "subscription.status": "active",
-      createdAt: { $gte: fourDaysAgo, $lte: threeDaysAgo },
-      "preferences.recurringBills": { $size: 0 },
-    });
-
-    for (let user of eligibleUsers) {
-      user.userState = "trigger_day_3_profiling";
-      await user.save();
-
-      const day3Message =
-        "By the way! 👋 Do you have a recurring rent payment or EMI you'd like me to remind you about on a specific date?";
-      await sendWhatsAppMessage(user.phoneNumber, day3Message);
-    }
-  } catch (err) {
-    console.error("Error in Day 3 Profiling cron:", err);
-  }
-}, {
-  timezone: "Asia/Kolkata",
 });
 
 app.listen(PORT, () => {

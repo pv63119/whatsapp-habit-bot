@@ -31,6 +31,14 @@ const expenseSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    isExcludedFromBudget: {
+      type: Boolean,
+      default: false,
+    },
+    isUnplannedCandidate: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

@@ -507,18 +507,18 @@ app.post("/webhook", async (req, res) => {
 
         if (!categoryBreakdown) categoryBreakdown = "No living expenses logged this month yet!";
 
-        // 2. Largest 5 Transactions
+        // 2. Largest 5 Transactions (Strictly no emojis)
         const largest5 = [...stats.expenses]
           .sort((a, b) => b.amount - a.amount)
           .slice(0, 5);
 
         let largestBreakdown = largest5
-          .map((e, i) => `${i + 1}. *₹${e.amount.toLocaleString("en-IN")}* — ${e.description} (${CATEGORY_EMOJI_MAP[e.category] || "📦"})`)
+          .map((e, i) => `${i + 1}. *₹${e.amount.toLocaleString("en-IN")}* — ${e.description}`)
           .join("\n");
 
         if (!largestBreakdown) largestBreakdown = "No expenses recorded yet!";
 
-        // 3. Last 5 Recent Transactions
+        // 3. Last 5 Recent Transactions (Strictly no emojis)
         const recent5 = [...stats.expenses]
           .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date))
           .slice(0, 5);
@@ -551,8 +551,8 @@ app.post("/webhook", async (req, res) => {
             : "") +
           `${oneOffSummary}\n\n` +
           `🏷️ *Category Breakdown:*\n${categoryBreakdown}\n\n` +
-          `🔝 *Top 5 Largest Spends:*\n${largestBreakdown}\n\n` +
-          `🕒 *Last 5 Recent Transactions:*\n${recentBreakdown}\n\n` +
+          `*Top 5 Largest Spends:*\n${largestBreakdown}\n\n` +
+          `*Last 5 Recent Transactions:*\n${recentBreakdown}\n\n` +
           `💡 _Notice an error? Tap below to edit or remove any recent entry!_`;
 
         const statsButtons = [

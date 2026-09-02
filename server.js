@@ -523,27 +523,122 @@ app.post("/webhook", async (req, res) => {
             : "") +
           `${oneOffSummary}\n\n` +
           `🏷️ *Category Breakdown:*\n${categoryBreakdown}\n\n` +
-          `💡 _Tip: Just text me any spend to add to your stats!_`;
+          `💡 _Notice an error? Tap below to edit or remove any recent entry!_`;
 
-        await sendWhatsAppMessage(senderPhone, statsMessage);
+        const statsButtons = [
+          { id: "edit_discrepancies", title: "✏️ Discrepancies? Edit" },
+        ];
+        await sendWhatsAppInteractiveButtons(senderPhone, statsMessage, statsButtons);
         return;
       }
 
-      // Quick Action Handler: 'history'
-      if (user.userState === "active_tracking" && lowerText === "history") {
-        const recentExpenses = await Expense.find({ phoneNumber: senderPhone })
+      // Quick Action Handler: 'edit_discrepancies' or 'discrepancies' (Shows last 10 numbered expenses with edit guide)
+      if (
+        lowerText === "edit_discrepancies" ||
+        lowerText === "✏️ discrepancies? edit" ||
+        lowerText === "discrepancy" ||
+        lowerText === "discrepancies" ||
+        lowerText === "edit spends" ||
+        lowerText === "manage expenses" ||
+        lowerText === "history"
+      ) {
+        const last10 = await Expense.find({ phoneNumber: senderPhone })
           .sort({ createdAt: -1 })
-          .limit(5);
+          .limit(10);
 
-        if (recentExpenses.length === 0) {
-          await sendWhatsAppMessage(senderPhone, "📝 No expenses logged yet! Text me something like '150 coffee' to start.");
-        } else {
-          const historyList = recentExpenses
-            .map((e) => `${CATEGORY_EMOJI_MAP[e.category] || "📦"} *₹${e.amount}* - ${e.description} ${e.isExcludedFromBudget ? "_[One-Off]_" : ""} _(${e.date})_`)
-            .join("\n");
-
-          await sendWhatsAppMessage(senderPhone, `📜 *Last 5 Transactions:*\n\n${historyList}`);
+        if (last10.length === 0) {
+          await sendWhatsAppMessage(senderPhone, "📝 No expenses recorded yet! Text me something like '150 coffee' to start.");
+          return;
         }
+
+        const itemsFormatted = last10
+          .map((e, idx) => {
+            const dateFormatted = new Date(e.createdAt || e.date).toLocaleDateString("en-IN", {
+              day: "2-digit",
+              month: "short",
+            });
+            const catEmoji = CATEGORY_EMOJI_MAP[e.category] || "📦";
+            const tag = e.isExcludedFromBudget ? " _[One-Off]_" : "";
+            return `*${idx + 1}.* ₹${e.amount.toLocaleString("en-IN")} — ${e.description} (${catEmoji} ${e.category})${tag} _(${dateFormatted})_`;
+          })
+          .join("\n\n");
+
+        const listMsg =
+          `📝 *Your Last ${last10.length} Recorded Spends:*\n\n` +
+          `${itemsFormatted}\n\n` +
+          `───────────────────\n` +
+          `✏️ *How to edit or remove:*\n` +
+          `• *Change amount:* Text *change 2 to 100*\n` +
+          `• *Remove an item:* Text *remove 4* (or *delete 4*)\n` +
+          `• *Change details:* Text *change 3 to 120 coffee*`;
+
+        await sendWhatsAppMessage(senderPhone, listMsg);
+        return;
+      }
+
+      // Quick Action Handler: 'remove X' or 'delete X'
+      const removeMatch = lowerText.match(/^(?:remove|delete|del|cancel)\s+(\d+)$/i);
+      if (removeMatch) {
+        const itemNum = parseInt(removeMatch[1], 10);
+        const last10 = await Expense.find({ phoneNumber: senderPhone }).sort({ createdAt: -1 }).limit(10);
+
+        if (itemNum < 1 || itemNum > last10.length) {
+          await sendWhatsAppMessage(
+            senderPhone,
+            `⚠️ Invalid item number! Please choose a number between 1 and ${last10.length}. (Text *edit spends* to view your list).`
+          );
+          return;
+        }
+
+        const targetExpense = last10[itemNum - 1];
+        await Expense.findByIdAndDelete(targetExpense._id);
+
+        const stats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
+        const replyMsg =
+          `🗑️ *Removed item #${itemNum}:*\n` +
+          `${CATEGORY_EMOJI_MAP[targetExpense.category] || "📦"} *₹${targetExpense.amount.toLocaleString("en-IN")}* — ${targetExpense.description}\n\n` +
+          (stats.monthlyBudget > 0
+            ? `${stats.statusEmoji} *Updated Remaining Budget:* ₹${stats.remaining.toLocaleString("en-IN")} (${stats.remainingPercent}%)`
+            : `💰 *Updated Living Spent:* ₹${stats.livingSpent.toLocaleString("en-IN")}`);
+
+        await sendWhatsAppMessage(senderPhone, replyMsg);
+        return;
+      }
+
+      // Quick Action Handler: 'change X to Y' or 'edit X to Y [desc]'
+      const changeMatch = lowerText.match(/^(?:change|update|edit|set)\s+(\d+)\s+(?:to\s+)?(\d+(?:\.\d+)?)(?:\s+(.+))?$/i);
+      if (changeMatch) {
+        const itemNum = parseInt(changeMatch[1], 10);
+        const newAmount = parseFloat(changeMatch[2]);
+        const newDescription = changeMatch[3]?.trim();
+
+        const last10 = await Expense.find({ phoneNumber: senderPhone }).sort({ createdAt: -1 }).limit(10);
+        if (itemNum < 1 || itemNum > last10.length) {
+          await sendWhatsAppMessage(
+            senderPhone,
+            `⚠️ Invalid item number! Please choose a number between 1 and ${last10.length}. (Text *edit spends* to view your list).`
+          );
+          return;
+        }
+
+        const targetExpense = last10[itemNum - 1];
+        const oldAmount = targetExpense.amount;
+        targetExpense.amount = newAmount;
+        if (newDescription) {
+          targetExpense.description = newDescription;
+        }
+        await targetExpense.save();
+
+        const stats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
+        const descText = newDescription ? ` — ${newDescription}` : ` — ${targetExpense.description}`;
+        const replyMsg =
+          `✏️ *Updated item #${itemNum}:*\n` +
+          `${CATEGORY_EMOJI_MAP[targetExpense.category] || "📦"}${descText}: ₹${oldAmount.toLocaleString("en-IN")} ➔ *₹${newAmount.toLocaleString("en-IN")}*\n\n` +
+          (stats.monthlyBudget > 0
+            ? `${stats.statusEmoji} *Updated Remaining Budget:* ₹${stats.remaining.toLocaleString("en-IN")} (${stats.remainingPercent}%)`
+            : `💰 *Updated Living Spent:* ₹${stats.livingSpent.toLocaleString("en-IN")}`);
+
+        await sendWhatsAppMessage(senderPhone, replyMsg);
         return;
       }
 

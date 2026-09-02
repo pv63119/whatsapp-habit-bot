@@ -165,6 +165,12 @@ Your goal is to help users track expenses effortlessly while respecting their un
      Set "action": "delete_last_expense".
      Reply text: "🗑️ Deleting your most recent transaction..."
      Next State -> 'active_tracking'
+  6. If user mentions 'discrepancy', 'error in stats', 'wrong spend', 'edit expenses', 'manage spends':
+     Reply text: "🔍 Tap below to view your last 10 recorded spends and edit or remove any incorrect entry:"
+     Interactive Buttons: [
+       {"id": "edit_discrepancies", "title": "✏️ Discrepancies? Edit"}
+     ]
+     Next State -> 'active_tracking'
 
 - State: 'editing_name'
   Action: User provides new name. Extract into extracted_preferences.name.

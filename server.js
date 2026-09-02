@@ -494,17 +494,45 @@ app.post("/webhook", async (req, res) => {
       if (user.userState === "active_tracking" && (lowerText === "stats" || lowerText === "summary")) {
         const stats = await getMonthlyBudgetStats(senderPhone, user.preferences.monthlyBudget);
 
+        // 1. Categories Breakdown (sorted highest to lowest)
         const categoryTotals = {};
         for (let exp of stats.expenses) {
           categoryTotals[exp.category] = (categoryTotals[exp.category] || 0) + exp.amount;
         }
 
         let categoryBreakdown = Object.entries(categoryTotals)
+          .sort((a, b) => b[1] - a[1])
           .map(([cat, amt]) => `${CATEGORY_EMOJI_MAP[cat] || "📦"} *${cat}:* ₹${amt.toLocaleString("en-IN")}`)
           .join("\n");
 
         if (!categoryBreakdown) categoryBreakdown = "No living expenses logged this month yet!";
 
+        // 2. Largest 5 Transactions
+        const largest5 = [...stats.expenses]
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 5);
+
+        let largestBreakdown = largest5
+          .map((e, i) => `${i + 1}. *₹${e.amount.toLocaleString("en-IN")}* — ${e.description} (${CATEGORY_EMOJI_MAP[e.category] || "📦"})`)
+          .join("\n");
+
+        if (!largestBreakdown) largestBreakdown = "No expenses recorded yet!";
+
+        // 3. Last 5 Recent Transactions
+        const recent5 = [...stats.expenses]
+          .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date))
+          .slice(0, 5);
+
+        let recentBreakdown = recent5
+          .map((e) => {
+            const d = new Date(e.createdAt || e.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+            return `• *₹${e.amount.toLocaleString("en-IN")}* — ${e.description} _(${d})_`;
+          })
+          .join("\n");
+
+        if (!recentBreakdown) recentBreakdown = "No transactions logged yet!";
+
+        // 4. One-Off Excluded Summary (if any)
         let oneOffSummary = "";
         if (stats.oneOffExpenses && stats.oneOffExpenses.length > 0) {
           const oneOffList = stats.oneOffExpenses
@@ -523,6 +551,8 @@ app.post("/webhook", async (req, res) => {
             : "") +
           `${oneOffSummary}\n\n` +
           `🏷️ *Category Breakdown:*\n${categoryBreakdown}\n\n` +
+          `🔝 *Top 5 Largest Spends:*\n${largestBreakdown}\n\n` +
+          `🕒 *Last 5 Recent Transactions:*\n${recentBreakdown}\n\n` +
           `💡 _Notice an error? Tap below to edit or remove any recent entry!_`;
 
         const statsButtons = [

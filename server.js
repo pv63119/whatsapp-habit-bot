@@ -526,19 +526,20 @@ app.post("/webhook", async (req, res) => {
           `💡 _Notice an error? Tap below to edit or remove any recent entry!_`;
 
         const statsButtons = [
-          { id: "edit_discrepancies", title: "✏️ Discrepancies? Edit" },
+          { id: "edit_discrepancies", title: "✏️ Edit" },
         ];
         await sendWhatsAppInteractiveButtons(senderPhone, statsMessage, statsButtons);
         return;
       }
 
-      // Quick Action Handler: 'edit_discrepancies' or 'discrepancies' (Shows last 10 numbered expenses with edit guide)
+      // Quick Action Handler: 'edit_discrepancies' or '✏️ edit' (Shows last 10 numbered expenses with edit guide)
       if (
         lowerText === "edit_discrepancies" ||
-        lowerText === "✏️ discrepancies? edit" ||
+        lowerText === "✏️ edit" ||
+        lowerText === "edit spends" ||
+        lowerText === "edit recent" ||
         lowerText === "discrepancy" ||
         lowerText === "discrepancies" ||
-        lowerText === "edit spends" ||
         lowerText === "manage expenses" ||
         lowerText === "history"
       ) {

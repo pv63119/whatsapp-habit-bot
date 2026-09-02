@@ -168,7 +168,7 @@ Your goal is to help users track expenses effortlessly while respecting their un
   6. If user mentions 'discrepancy', 'error in stats', 'wrong spend', 'edit expenses', 'manage spends':
      Reply text: "🔍 Tap below to view your last 10 recorded spends and edit or remove any incorrect entry:"
      Interactive Buttons: [
-       {"id": "edit_discrepancies", "title": "✏️ Discrepancies? Edit"}
+       {"id": "edit_discrepancies", "title": "✏️ Edit"}
      ]
      Next State -> 'active_tracking'
 

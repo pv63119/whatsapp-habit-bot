@@ -899,18 +899,37 @@ async function broadcastMonthlyReset() {
 async function broadcastNudge(filterRegex, timeSlot, frequencyType) {
   try {
     const now = new Date();
+    const istDateStr = now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // YYYY-MM-DD
+    const currentSlotKey = `${istDateStr}_${timeSlot}_${frequencyType}`;
+
+    // Query active subscribers who have not already received this slot today
     const users = await User.find({
-      userState: "active_tracking",
+      userState: {
+        $nin: [
+          "new_user",
+          "onboarding_name",
+          "onboarding_budget",
+          "onboarding_reminders",
+          "awaiting_payment",
+        ],
+      },
       "subscription.status": "active",
       "subscription.validUntil": { $gt: now },
       "preferences.nudgeFrequency": { $regex: filterRegex },
+      "preferences.lastNudgeDateSlot": { $ne: currentSlotKey },
     });
 
-    console.log(`⏰ Broadcasting [${timeSlot} / ${frequencyType}] nudge to ${users.length} active subscriber(s)...`);
+    if (users.length > 0) {
+      console.log(`⏰ Broadcasting [${timeSlot} / ${frequencyType}] nudge to ${users.length} active subscriber(s)...`);
 
-    for (let user of users) {
-      const messageText = getNudgeMessage(frequencyType, timeSlot, new Date(), user.name);
-      await sendWhatsAppMessage(user.phoneNumber, messageText);
+      for (let user of users) {
+        const messageText = getNudgeMessage(frequencyType, timeSlot, new Date(), user.name);
+        await sendWhatsAppMessage(user.phoneNumber, messageText);
+
+        // Deduplicate: mark slot sent for today
+        user.preferences.lastNudgeDateSlot = currentSlotKey;
+        await user.save();
+      }
     }
   } catch (err) {
     console.error(`Error broadcasting ${timeSlot} nudge:`, err);
@@ -982,9 +1001,6 @@ cron.schedule("0 11 * * *", async () => {
     });
 
     for (let user of eligibleUsers) {
-      user.userState = "trigger_day_3_profiling";
-      await user.save();
-
       const day3Message =
         "By the way! 👋 Do you have a recurring rent payment or EMI you'd like me to remind you about on a specific date?";
       await sendWhatsAppMessage(user.phoneNumber, day3Message);

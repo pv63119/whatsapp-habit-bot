@@ -33,6 +33,7 @@ const userSchema = new mongoose.Schema(
       recurringBills: { type: [String], default: [] },
       nudgeFrequency: { type: String, default: null },
       lastMonthlyResetPrompt: { type: String, default: null }, // e.g. "2026-09"
+      lastNudgeDateSlot: { type: String, default: null }, // e.g. "2026-09-04_9PM"
     },
     subscription: {
       status: {
